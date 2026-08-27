@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#050510">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BoltCall">
+  <meta name="description" content="BoltCall — Encrypted P2P Video Calling & Chat">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="icon" type="image/png" href="/icon-192.png">
+  <title>BoltCall ⚡</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Background Effects -->
+  <div class="bg-grid"></div>
+  <div class="bg-particles" id="particles"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       LOGIN SCREEN — Password-only authentication
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="login-screen" class="screen active">
+    <div class="login-container">
+      <div class="logo-section">
+        <div class="logo-icon">
+          <svg viewBox="0 0 80 80" class="bolt-svg">
+            <polygon points="45,5 20,42 35,42 28,75 60,35 42,35 55,5"
+                     fill="none" stroke="url(#neonGrad)" stroke-width="3" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="neonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#00f0ff"/>
+                <stop offset="50%" style="stop-color:#b400ff"/>
+                <stop offset="100%" style="stop-color:#ff0090"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h1 class="logo-text">BOLT<span>CALL</span></h1>
+        <p class="logo-subtitle">Encrypted P2P Communication</p>
+      </div>
+
+      <div class="login-card glass-panel">
+        <div class="login-header">
+          <span class="lock-icon">🔐</span>
+          <h2>Access Required</h2>
+          <p>আপনার password দিন</p>
+        </div>
+
+        <form id="login-form" autocomplete="off">
+          <div class="input-group">
+            <label for="login-password">Password</label>
+            <div class="password-wrapper">
+              <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+              <button type="button" id="btn-toggle-pw" class="pw-toggle" aria-label="Show password">👁️</button>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-full" id="btn-login">
+            <span class="btn-icon">⚡</span>
+            <span>Enter BoltCall</span>
+          </button>
+        </form>
+
+        <div id="login-status" class="login-status"></div>
+      </div>
+
+      <!-- PWA install hint -->
+      <a href="/pwa" class="pwa-hint">📲 Install as App</a>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       LANDING SCREEN — Room create / join
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="landing-screen" class="screen">
+    <div class="landing-container">
+      <div class="logo-section logo-compact">
+        <div class="logo-icon-sm">⚡</div>
+        <h1 class="logo-text-sm">BOLT<span>CALL</span></h1>
+      </div>
+
+      <div class="room-controls glass-panel">
+        <div class="input-group">
+          <label for="username-input">আপনার নাম</label>
+          <input type="text" id="username-input" placeholder="নাম লিখুন..." maxlength="30" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="room-input">Room ID</label>
+          <input type="text" id="room-input" placeholder="Room ID দিন বা খালি রাখুন" maxlength="8" autocomplete="off">
+        </div>
+        <div class="button-group">
+          <button id="btn-create-room" class="btn btn-primary">
+            <span class="btn-icon">⚡</span>
+            <span>নতুন Room</span>
+          </button>
+          <button id="btn-join-room" class="btn btn-secondary">
+            <span class="btn-icon">🔗</span>
+            <span>Join Room</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="landing-footer">
+        <button id="btn-logout" class="btn-ghost">🚪 Logout</button>
+        <a href="/pwa" class="btn-ghost">📲 Install App</a>
+      </div>
+
+      <div id="landing-status" class="status-bar"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CALL SCREEN — Video + Chat
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="call-screen" class="screen">
+
+    <!-- Top Bar -->
+    <header class="top-bar glass-panel">
+      <div class="top-bar-left">
+        <span class="logo-mini">⚡</span>
+        <span class="room-label" id="room-id-display">---</span>
+      </div>
+      <div class="top-bar-center">
+        <span class="call-timer" id="call-timer">00:00</span>
+      </div>
+      <div class="top-bar-right">
+        <button id="btn-toggle-chat" class="icon-btn" title="Chat">
+          💬<span class="chat-badge hidden" id="chat-badge">0</span>
+        </button>
+        <button id="btn-copy-room" class="icon-btn" title="Copy Room ID">📋</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+
+      <!-- Video Grid -->
+      <div class="video-section">
+        <div class="video-grid" id="video-grid">
+          <div class="video-card local" id="local-video-card">
+            <video id="local-video" autoplay muted playsinline></video>
+            <div class="video-overlay">
+              <span class="video-name">আপনি</span>
+              <div class="video-indicators">
+                <span class="indicator" id="local-audio-indicator">🎤</span>
+                <span class="indicator" id="local-video-indicator">📹</span>
+              </div>
+            </div>
+            <div class="video-placeholder" id="local-placeholder">
+              <div class="avatar-circle">👤</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="waiting-overlay" id="waiting-overlay">
+          <div class="waiting-content">
+            <div class="pulse-ring"></div>
+            <p class="waiting-text">অপেক্ষা করা হচ্ছে...</p>
+            <p class="waiting-hint">Room ID: <code id="share-room-id">---</code></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Panel -->
+      <div class="chat-panel glass-panel collapsed" id="chat-panel">
+        <div class="chat-header">
+          <h3>💬 Chat</h3>
+          <button id="btn-close-chat" class="icon-btn icon-btn-sm">✕</button>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-system-msg"><span>🔒 Session-এ সীমাবদ্ধ</span></div>
+        </div>
+
+        <div class="image-preview-bar hidden" id="image-preview-bar">
+          <img id="image-preview-thumb" src="" alt="">
+          <span id="image-preview-name">image.png</span>
+          <button id="btn-edit-image" class="icon-btn icon-btn-sm" title="Annotate">✏️</button>
+          <button id="btn-cancel-image" class="icon-btn icon-btn-sm">✕</button>
+        </div>
+
+        <div class="chat-input-area">
+          <div class="chat-actions">
+            <button id="btn-attach-image" class="icon-btn" title="Image">🖼️</button>
+            <button id="btn-voice-record" class="icon-btn" title="Voice">🎤</button>
+          </div>
+          <div class="chat-input-wrapper">
+            <input type="text" id="chat-input" placeholder="বার্তা..." autocomplete="off" maxlength="2000">
+            <button id="btn-send-message" class="btn-send">➤</button>
+          </div>
+        </div>
+
+        <div class="voice-recording-bar hidden" id="voice-recording-bar">
+          <div class="rec-pulse"></div>
+          <span>রেকর্ড... <span id="voice-timer">0:00</span></span>
+          <button id="btn-cancel-voice" class="icon-btn icon-btn-sm">✕</button>
+          <button id="btn-send-voice" class="btn btn-primary btn-sm">পাঠান</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Call Controls -->
+    <div class="call-controls glass-panel">
+      <button id="btn-toggle-audio" class="control-btn" title="Mic">
+        <span class="control-icon">🎤</span>
+        <span class="control-label">Mic</span>
+      </button>
+      <button id="btn-toggle-video" class="control-btn" title="Video">
+        <span class="control-icon">📹</span>
+        <span class="control-label">Video</span>
+      </button>
+      <button id="btn-end-call" class="control-btn control-btn-danger" title="End">
+        <span class="control-icon">📞</span>
+        <span class="control-label">End</span>
+      </button>
+      <button id="btn-toggle-screen" class="control-btn" title="Share">
+        <span class="control-icon">🖥️</span>
+        <span class="control-label">Share</span>
+      </button>
+      <button id="btn-leave-room" class="control-btn control-btn-danger" title="Leave">
+        <span class="control-icon">🚪</span>
+        <span class="control-label">Leave</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       ANNOTATION MODAL
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="annotation-modal">
+    <div class="modal glass-panel">
+      <div class="modal-header">
+        <h3>✏️ Annotate</h3>
+        <button id="btn-close-annotation" class="icon-btn icon-btn-sm">✕</button>
+      </div>
+      <div class="annotation-toolbar">
+        <button class="tool-btn active" data-tool="pen" title="Pen">🖊️</button>
+        <button class="tool-btn" data-tool="highlighter" title="Highlight">🖍️</button>
+        <button class="tool-btn" data-tool="arrow" title="Arrow">➡️</button>
+        <button class="tool-btn" data-tool="rect" title="Rect">⬜</button>
+        <button class="tool-btn" data-tool="circle" title="Circle">⭕</button>
+        <button class="tool-btn" data-tool="text" title="Text">🔤</button>
+        <button class="tool-btn" data-tool="eraser" title="Eraser">🧹</button>
+        <div class="tool-separator"></div>
+        <input type="color" id="annot-color" value="#ff0040" class="color-picker">
+        <input type="range" id="annot-stroke" min="1" max="20" value="3" class="stroke-slider">
+        <button id="btn-annot-undo" class="tool-btn" title="Undo">↩️</button>
+        <button id="btn-annot-clear" class="tool-btn" title="Clear">🗑️</button>
+      </div>
+      <div class="canvas-container">
+        <canvas id="annotation-canvas"></canvas>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-annot-cancel" class="btn btn-secondary">বাতিল</button>
+        <button id="btn-annot-send" class="btn btn-primary">পাঠান ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PWA Install Banner (auto) -->
+  <div class="pwa-banner hidden" id="pwa-banner">
+    <div class="pwa-banner-content">
+      <span>📲</span>
+      <span>BoltCall ইনস্টল করুন</span>
+    </div>
+    <div class="pwa-banner-actions">
+      <button id="pwa-install-accept" class="btn btn-primary btn-sm">Install</button>
+      <button id="pwa-install-dismiss" class="btn-ghost btn-sm">✕</button>
+    </div>
+  </div>
+
+  <input type="file" id="file-input" accept="image/*" class="hidden-input">
+  <div id="toast-container"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
