@@ -30,6 +30,17 @@ function notFoundHandler(req, res, next) {
 
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
+  // ── রেসপন্স ইতিমধ্যেই পাঠানো হয়ে গেছে? ───────────────────────────
+  // (যেমন: res.sendFile stream শুরু হওয়ার পরে error, বা অন্য কোনো
+  //  handler আগেই respond করে ফেলেছে)। এ অবস্থায় আবার হেডার/বডি লিখলে
+  //  ERR_HTTP_HEADERS_SENT হয় — তাই Express-এর ডিফল্ট handler-এ দিয়ে
+  //  দেওয়া হয়, যা কানেকশনটি নিরাপদে বন্ধ করে।
+  if (res.headersSent) {
+    logger.error('[unhandled:after-response]', err && err.message, err && err.stack);
+    next(err);
+    return;
+  }
+
   // ── Multer (আপলোড) error ─────────────────────────────────────────
   if (err instanceof multer.MulterError) {
     const messages = {

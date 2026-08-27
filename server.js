@@ -35,7 +35,18 @@ async function bootstrap() {
   ensureUploadDirs();
 
   // ── ৩+৪) HTTP + Socket.IO ─────────────────────────────────────
-  const httpServer = http.createServer();
+  // গুরুত্বপূর্ণ: request listener টি createServer()-এই দিতে হয়।
+  // পরে httpServer.on('request', app) করলে Socket.IO-র নিজের request
+  // listener + Express — দুটোই প্রতিটি request পায়; /socket.io/ কলে
+  // Socket.IO আগে respond করে ফেলে, তারপর Express সেই একই res-এ হেডার
+  // বসাতে গিয়ে ERR_HTTP_HEADERS_SENT ছোড়ে। createServer()-এ listener
+  // দিলে Socket.IO attach() সেটি নিজে দখল করে এবং non-socket request
+  // গুলোই কেবল Express-এ ফরোয়ার্ড করে।
+  //
+  // app তৈরি হয় io বানানোর পরে (route গুলোর io দরকার), তাই এখানে একটি
+  // late-bound wrapper ব্যবহার করা হয়।
+  let app = null;
+  const httpServer = http.createServer((req, res) => app(req, res));
 
   const io = new Server(httpServer, {
     // frontend একই origin থেকে আসে; CORS_ORIGIN দিলে সেগুলোই অনুমোদিত
@@ -54,8 +65,7 @@ async function bootstrap() {
     }
   });
 
-  const app = createApp({ io });
-  httpServer.on('request', app);
+  app = createApp({ io });
 
   attachSocketServer(io);
 
