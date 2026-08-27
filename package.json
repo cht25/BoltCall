@@ -1,29 +1,43 @@
 {
-  "name": "boltcall",
+  "name": "nexachat",
   "version": "1.0.0",
-  "description": "BoltCall - Production-ready WebRTC video calling & rich media chat application",
+  "description": "NexaChat — production-oriented real-time messaging (Express + Socket.IO + SQLite) with 1-on-1 WebRTC audio/video calling over Metered.ca STUN/TURN",
   "main": "server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "engines": {
-    "node": ">=16.0.0"
-  },
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.3",
-    "multer": "^1.4.5-lts.1",
-    "socket.io": "^4.7.4",
-    "uuid": "^9.0.0"
+    "dev": "node server.js",
+    "seed": "node scripts/seed.js",
+    "test": "node scripts/smoke-test.js"
   },
   "keywords": [
+    "chat",
+    "messaging",
     "webrtc",
+    "socket.io",
+    "sqlite",
     "video-call",
-    "socketio",
-    "real-time",
-    "chat"
+    "voice-message"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "socket.io": "^4.8.1"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
 }
