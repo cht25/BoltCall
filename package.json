@@ -1,7 +1,7 @@
 {
-  "name": "nexachat",
+  "name": "boltcall",
   "version": "1.0.0",
-  "description": "NexaChat — production-oriented real-time messaging (Express + Socket.IO + SQLite) with 1-on-1 WebRTC audio/video calling over Metered.ca STUN/TURN",
+  "description": "BoltCall — one shared group-call room: password entry, instant group call with two-way voice, video, screen sharing (WebRTC mesh) and text chat. Everyone appears as \"thamjj13\".",
   "main": "server.js",
   "engines": {
     "node": ">=22.5.0"
@@ -9,17 +9,15 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "seed": "node scripts/seed.js",
     "test": "node scripts/smoke-test.js"
   },
   "keywords": [
-    "chat",
-    "messaging",
+    "group-call",
     "webrtc",
     "socket.io",
-    "sqlite",
     "video-call",
-    "voice-message"
+    "screen-share",
+    "chat"
   ],
   "license": "MIT",
   "dependencies": {
@@ -31,11 +29,7 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2",
     "socket.io": "^4.8.1"
-  },
-  "optionalDependencies": {
-    "better-sqlite3": "^11.8.1"
   },
   "devDependencies": {
     "socket.io-client": "^4.8.1"

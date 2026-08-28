@@ -1,26 +1,21 @@
 # ═══════════════════════════════════════════════════════════════════════
-# render.yaml — NexaChat (Render-ready)
+# render.yaml — BoltCall (Render-ready)
 #
-# Deploy: push this repo to GitHub, create a new "Blueprint" instance on
-# Render pointing at this repo, and Render will provision the service below.
+# Deploy: push this repo to GitHub, create a "Blueprint" instance on
+# Render pointing at it, and set ROOM_PASSWORD (or ROOM_PASSWORD_HASH)
+# in the dashboard.
 #
-# ⚠️  IMPORTANT — storage on Render:
-#   The default disk on Render web services is EPHEMERAL. Anything written to
-#   ./data (SQLite) or ./uploads is LOST on every deploy / restart. For a
-#   real deployment either:
-#     • mount a Render Persistent Disk (see disk: block, commented out), or
-#     • swap SQLite for MongoDB (set DB_DRIVER=mongodb + MONGO_URI), or
-#     • use object storage (S3/R2) for uploads.
-#   This blueprint documents the limitation honestly rather than pretending
-#   local disk is durable.
+# ⚠️  BoltCall is a SINGLE-INSTANCE app: the room roster and chat history
+# live in process memory. Keep numInstances: 1 and never enable autoscaling.
+# (Media itself is peer-to-peer; the server only relays signaling.)
 # ═══════════════════════════════════════════════════════════════════════
 
 services:
   - type: web
-    name: nexachat
+    name: boltcall
     runtime: node
-    plan: starter # "free" also works; free tier spins down when idle
-    region: oregon # change to frankfurt / singapore etc. if closer to you
+    plan: starter # "free" works too; free tier spins down when idle
+    region: oregon # pick the region closest to your group
     branch: main
     buildCommand: npm install
     startCommand: node server.js
@@ -33,20 +28,24 @@ services:
         value: production
       - key: SESSION_SECRET
         generateValue: true # Render stores this in its secret store
-      - key: DB_DRIVER
-        value: sqlite
-      - key: DATABASE_PATH
-        value: ./data/nexachat.sqlite
-      - key: UPLOAD_DIR
-        value: ./uploads
-      - key: MAX_FILE_SIZE_MB
-        value: "10"
-      # ── WebRTC TURN (Metered.ca) ───────────────────────────────────
-      # Without these, calls fall back to STUN-only (works on easy networks
-      # but fails behind symmetric NAT). Add your Metered credentials here.
-      # The API key is NEVER sent to the browser — the server fetches
-      # short-lived TURN credentials and serves only those via
-      # GET /api/webrtc/ice-servers.
+      - key: TRUST_PROXY
+        value: "1"
+      # ── The room ───────────────────────────────────────────────────
+      # REQUIRED: the group-call password. Plain text here, or replace
+      # with ROOM_PASSWORD_HASH (bcrypt) for stronger handling.
+      - key: ROOM_PASSWORD
+        sync: false # set manually in the Render dashboard
+      - key: ROOM_NAME
+        value: boltcall-room
+      - key: MEMBER_NAME
+        value: thamjj13
+      - key: MAX_PARTICIPANTS
+        value: "24"
+      # ── WebRTC TURN (Metered.ca) ──────────────────────────────────
+      # Without these, calls fall back to public STUN (works on easy
+      # networks but fails behind symmetric NAT). The API key is NEVER
+      # sent to the browser — the server fetches short-lived TURN
+      # credentials and serves only those via /api/webrtc/ice-servers.
       - key: METERED_API_KEY
         sync: false
       - key: METERED_DOMAIN
@@ -55,17 +54,3 @@ services:
         sync: false
       - key: METERED_TURN_CREDENTIAL
         sync: false
-      - key: CALL_RING_TIMEOUT_SECONDS
-        value: "35"
-
-    # Optional persistent disk. Uncomment to keep SQLite + uploads across
-    # deploys. Mount path must match DATABASE_PATH / UPLOAD_DIR above.
-    # disk:
-    #   name: nexachat-data
-    #   mountPath: /var/data/nexachat
-    #   sizeGB: 1
-
-# No managed databases are required for the SQLite build. If you prefer
-# MongoDB, add a `databases:` block and set DB_DRIVER=mongodb + MONGO_URI
-# in envVars. The repository layer (src/db/sqlite-adapter.js) is the only
-# place that touches the DB, so swapping drivers does not touch the API.

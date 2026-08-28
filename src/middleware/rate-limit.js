@@ -1,13 +1,12 @@
 /**
  * src/middleware/rate-limit.js
  * ───────────────────────────────────────────────────────────────────────
- * Rate limiting — স্প্যাম, brute-force ও abuse প্রতিরোধ।
+ * Rate limiting — brute-force and spam protection.
  *
- * আলাদা আলাদা বাজেট রাখা হয়েছে কারণ সব endpoint-এর ঝুঁকি সমান নয়:
- *   • auth   → brute-force আটকাতে সবচেয়ে কঠোর
- *   • search → ডাটাবেস স্ক্যান ব্যয়বহুল
- *   • upload → ডিস্ক/ব্যান্ডউইথ ব্যয়বহুল
- *   • message→ স্প্যাম আটকানো (socket পাশেও token bucket আছে)
+ *   • auth    → strictest budget (wrong-password guessing)
+ *   • general → broad API budget
+ *   • socket  → in-memory token buckets for socket events
+ *               (express-rate-limit only covers HTTP)
  */
 
 'use strict';
@@ -21,27 +20,24 @@ function build({ windowMs, max }, message) {
     max,
     standardHeaders: true,
     legacyHeaders: false,
-    // লগইন-করা ইউজার হলে userId, নাহলে IP অনুযায়ী গণনা
-    keyGenerator: (req) => (req.user ? `u:${req.user.id}` : `ip:${req.ip}`),
+    // count per IP (BoltCall sessions are anonymous memberships)
+    keyGenerator: (req) => `ip:${req.ip}`,
     handler: (req, res) => {
       res.status(429).json({ error: message, code: 'rate_limited' });
     }
   });
 }
 
-const authLimiter = build(config.rateLimits.auth, 'অনেকবার চেষ্টা করা হয়েছে — ১৫ মিনিট পর আবার চেষ্টা করুন');
-const searchLimiter = build(config.rateLimits.search, 'সার্চের সীমা ছাড়িয়ে গেছে — একটু পরে চেষ্টা করুন');
-const messageLimiter = build(config.rateLimits.message, 'অনেক দ্রুত মেসেজ পাঠানো হচ্ছে — একটু ধীরে');
-const uploadLimiter = build(config.rateLimits.upload, 'আপলোডের সীমা ছাড়িয়ে গেছে — একটু পরে চেষ্টা করুন');
-const generalLimiter = build(config.rateLimits.general, 'অনেক বেশি রিকোয়েস্ট — একটু পরে চেষ্টা করুন');
+const authLimiter = build(config.rateLimits.auth, 'Too many attempts — please try again in 15 minutes');
+const generalLimiter = build(config.rateLimits.general, 'Too many requests — please slow down');
 
 /**
- * Socket.IO ইভেন্টের জন্য সাধারণ token bucket (per socket)।
- * express-rate-limit শুধু HTTP-তে কাজ করে, তাই socket-এর জন্য এটি।
+ * Socket.IO token bucket (per key). Used for chat messages, media-state
+ * updates and signaling events so no single socket can flood the room.
  */
 function createSocketLimiter(perMinute) {
   const state = new Map(); // key → { tokens, updatedAt }
-  const refillRate = perMinute / 60000; // প্রতি ms-এ কত token
+  const refillRate = perMinute / 60000; // tokens per ms
 
   return function consume(key, cost = 1) {
     const nowMs = Date.now();
@@ -57,7 +53,7 @@ function createSocketLimiter(perMinute) {
     entry.tokens -= cost;
     state.set(key, entry);
 
-    // মেমরি লিক আটকাতে মাঝে মাঝে পুরনো এন্ট্রি পরিষ্কার
+    // periodic cleanup to avoid unbounded growth
     if (state.size > 5000) {
       for (const [k, v] of state) {
         if (nowMs - v.updatedAt > 300000) state.delete(k);
@@ -69,9 +65,6 @@ function createSocketLimiter(perMinute) {
 
 module.exports = {
   authLimiter,
-  searchLimiter,
-  messageLimiter,
-  uploadLimiter,
   generalLimiter,
   createSocketLimiter
 };

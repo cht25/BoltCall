@@ -1,23 +1,23 @@
 /**
  * src/services/ice.js
  * ───────────────────────────────────────────────────────────────────────
- * WebRTC ICE server (STUN/TURN) কনফিগারেশন সরবরাহ করে — Metered.ca ব্যবহার করে।
+ * WebRTC ICE server (STUN/TURN) configuration — uses Metered.ca.
  *
- * কেন TURN দরকার? — দুই peer যদি symmetric NAT/firewall-এর পেছনে থাকে,
- * সরাসরি P2P কানেকশন হয় না। তখন TURN server মিডিয়া relay করে। STUN শুধু
- * নিজের পাবলিক IP:port আবিষ্কারে সাহায্য করে।
+ * Why TURN? — when two peers sit behind symmetric NAT/firewalls a direct
+ * P2P connection is impossible; a TURN server relays the media instead.
+ * STUN only helps discover one's own public IP:port.
  *
- * নিরাপত্তা — সবচেয়ে গুরুত্বপূর্ণ অংশ:
- *   • METERED_API_KEY কখনো frontend-এ পাঠানো হয় না। শুধু সার্ভার Metered
- *     API-তে কল করে ephemeral TURN credential আনে এবং সেই credential-টুকুই
- *     authenticated client-কে দেয় (GET /api/webrtc/ice-servers)।
- *   • কোনো লগে API key বা credential ছাপা হয় না।
+ * Security — the most important part:
+ *   • METERED_API_KEY never reaches the frontend. Only the server calls
+ *     the Metered API for ephemeral TURN credentials and serves just
+ *     those to authenticated members (GET /api/webrtc/ice-servers).
+ *   • API keys or credentials never appear in logs.
  *
- * তিনটি স্তরে fallback:
- *   ১) METERED_API_KEY + METERED_DOMAIN → অফিসিয়াল API (প্রস্তাবিত)
- *   ২) METERED_TURN_USERNAME/CREDENTIAL → static credential
- *   ৩) কিছুই না থাকলে → শুধু পাবলিক STUN (একই নেটওয়ার্ক/সহজ NAT-এ কাজ করে,
- *      relay লাগলে ব্যর্থ হবে — frontend-কে warning পাঠানো হয়)
+ * Three-level fallback:
+ *   1) METERED_API_KEY + METERED_DOMAIN → official API (recommended)
+ *   2) METERED_TURN_USERNAME/CREDENTIAL → static credentials
+ *   3) nothing configured → public STUN only (works on the same network
+ *      and easy NATs; relay scenarios fail — the frontend gets a warning)
  */
 
 'use strict';
@@ -25,7 +25,7 @@
 const config = require('../config');
 const logger = require('../utils/logger');
 
-// Metered-এর স্ট্যান্ডার্ড relay endpoint তালিকা (ডকুমেন্টেশন অনুযায়ী)
+// Metered's standard relay endpoint list (per their docs)
 const METERED_URLS = [
   'stun:stun.relay.metered.ca:80',
   'turn:global.relay.metered.ca:80',
@@ -38,10 +38,10 @@ const PUBLIC_STUN_ONLY = [
   { urls: ['stun:stun.relay.metered.ca:80', 'stun:stun.l.google.com:19302'] }
 ];
 
-// ইন-মেমরি ক্যাশ — প্রতিটি কলে Metered API-তে হিট করা হয় না
+// In-memory cache — don't hit the Metered API on every call
 let cache = { data: null, expiresAt: 0 };
 
-/** Metered API থেকে ephemeral credential আনা */
+/** Fetch ephemeral credentials from the Metered API. */
 async function fetchFromMeteredApi() {
   const domain = config.metered.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
   const url = `https://${domain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(config.metered.apiKey)}`;
@@ -52,15 +52,15 @@ async function fetchFromMeteredApi() {
   try {
     const response = await fetch(url, { signal: controller.signal, headers: { accept: 'application/json' } });
     if (!response.ok) {
-      // status ছাড়া কিছু লগ করা হয় না (URL-এ key আছে, তাই URL লগ নিষিদ্ধ)
+      // Only the status is logged — the URL contains the key, so never log it
       throw new Error(`Metered API HTTP ${response.status}`);
     }
     const payload = await response.json();
     const iceServers = Array.isArray(payload) ? payload : payload?.iceServers;
     if (!Array.isArray(iceServers) || !iceServers.length) {
-      throw new Error('Metered API থেকে অপ্রত্যাশিত রেসপন্স');
+      throw new Error('Unexpected response from Metered API');
     }
-    // শুধু প্রয়োজনীয় ফিল্ড রেখে স্যানিটাইজ করা হয়
+    // Keep only the fields the browser needs
     return iceServers
       .filter((server) => server && server.urls)
       .map((server) => ({
@@ -74,7 +74,7 @@ async function fetchFromMeteredApi() {
 }
 
 /**
- * ICE কনফিগারেশন রিটার্ন করে (ক্যাশসহ)।
+ * Return ICE configuration (with caching).
  * @returns {Promise<{iceServers:Array, source:string, ttl:number, warning?:string}>}
  */
 async function getIceServers({ force = false } = {}) {
@@ -86,18 +86,18 @@ async function getIceServers({ force = false } = {}) {
   let result;
 
   if (config.metered.apiKey && config.metered.domain && !config.metered.domain.startsWith('YOUR_')) {
-    // ── স্তর ১: অফিসিয়াল Metered API ──────────────────────────────
+    // ── Level 1: official Metered API ────────────────────────────────
     try {
       const iceServers = await fetchFromMeteredApi();
       result = { iceServers, source: 'metered-api' };
-      logger.info(`[ice] Metered API থেকে ${iceServers.length}টি ICE server পাওয়া গেছে`);
+      logger.info(`[ice] got ${iceServers.length} ICE servers from the Metered API`);
     } catch (err) {
-      logger.warn('[ice] Metered API ব্যর্থ, static credential চেষ্টা করা হচ্ছে:', err.message);
+      logger.warn('[ice] Metered API failed, trying static credentials:', err.message);
     }
   }
 
   if (!result && config.metered.turnUsername && config.metered.turnCredential) {
-    // ── স্তর ২: static TURN credential ────────────────────────────
+    // ── Level 2: static TURN credentials ─────────────────────────────
     result = {
       iceServers: [
         {
@@ -111,14 +111,14 @@ async function getIceServers({ force = false } = {}) {
   }
 
   if (!result) {
-    // ── স্তর ৩: শুধু STUN (relay নেই) ─────────────────────────────
+    // ── Level 3: public STUN only (no relay) ─────────────────────────
     result = {
       iceServers: PUBLIC_STUN_ONLY,
       source: 'stun-only',
       warning:
-        'TURN credential কনফিগার করা নেই — কঠিন NAT/firewall-এর পেছনে কল সংযুক্ত না-ও হতে পারে। .env-এ METERED_API_KEY ও METERED_DOMAIN দিন।'
+        'No TURN relay configured — calls may fail behind strict NAT/firewalls. Set METERED_API_KEY and METERED_DOMAIN in .env.'
     };
-    logger.warn('[ice] TURN credential নেই — শুধু STUN দিয়ে চলছে');
+    logger.warn('[ice] no TURN credentials — running STUN-only');
   }
 
   const ttl = result.source === 'stun-only' ? 60 : config.metered.cacheSeconds;
@@ -126,7 +126,7 @@ async function getIceServers({ force = false } = {}) {
   return { ...result, cached: false, ttl };
 }
 
-/** টেস্ট/রিফ্রেশের জন্য ক্যাশ পরিষ্কার */
+/** Clear the cache (tests / manual refresh). */
 function clearCache() {
   cache = { data: null, expiresAt: 0 };
 }

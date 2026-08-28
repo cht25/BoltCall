@@ -1,142 +1,172 @@
 /**
  * src/sockets/index.js
  * ───────────────────────────────────────────────────────────────────────
- * Socket.IO সেটআপ: authentication → presence → chat handlers → call handlers।
+ * Socket.IO layer for the single group-call room.
  *
- * ⚠️ গুরুত্বপূর্ণ: socket.handshake.auth.userId কখনো বিশ্বাস করা হয় না।
- * প্রতিটি connection-এ httpOnly cookie (বা auth.token) থেকে JWT নিয়ে
- * signature+expiry যাচাই করা হয়, ডাটাবেস থেকে ইউজার লোড করা হয় এবং
- * socket.id ↔ authenticated userId ম্যাপ তৈরি হয়। যাচাই ব্যর্থ হলে
- * connection সরাসরি প্রত্যাখ্যাত।
+ * Lifecycle:  token check → join room channel → send `room:init` snapshot
+ *             → relay signaling / chat / media-state between peers.
+ *
+ * The server never touches audio/video: WebRTC media flows peer-to-peer.
+ * This layer is (1) signaling relay and (2) shared chat + presence state.
+ * Everyone is addressed by member id only — the name every client renders
+ * is config.room.memberName ("thamjj13"), enforced server-side.
  */
 
 'use strict';
 
 const config = require('../config');
-const { getDb } = require('../../database');
 const logger = require('../utils/logger');
-const presence = require('../services/presence');
 const { verifyToken, tokenFromCookieHeader } = require('../services/tokens');
-const { createCallManager } = require('../services/call-manager');
-const { registerChatHandlers } = require('./chat-handlers');
-const { registerCallHandlers, handleCallTimeout, cleanupCallsForUser } = require('./call-handlers');
-const { userRoom, emitDelivered, emitPresence } = require('./emitters');
+const { createSocketLimiter } = require('../middleware/rate-limit');
+const {
+  room,
+  snapshot,
+  add: addParticipant,
+  get: getParticipant,
+  remove: removeParticipant,
+  updateMedia: updateParticipantMedia,
+  pushMessage,
+  mediaKinds
+} = require('../services/room');
 
-/**
- * কোন কোন ইউজারকে এই ইউজারের presence পরিবর্তন জানানো হবে?
- * — যারা তাকে কনট্যাক্টে সেভ করেছে, এবং যাদের সাথে তার চ্যাট আছে।
- * (সবাইকে broadcast করা হয় না — অপ্রয়োজনীয় তথ্য ফাঁস ও ট্রাফিক এড়াতে)
- */
-async function presenceWatchers(db, user) {
-  const [contactWatchers, partners] = await Promise.all([
-    db.contacts.watchersOf(user.phone),
-    db.conversations.partnerIds(user.id)
-  ]);
-  return Array.from(new Set([...contactWatchers, ...partners]));
-}
+const CHANNEL = 'room'; // single Socket.IO room every participant joins
+
+const chatLimiter = createSocketLimiter(config.rateLimits.socket.chatPerMinute);
+const signalLimiter = createSocketLimiter(config.rateLimits.socket.signalPerMinute);
+const stateLimiter = createSocketLimiter(config.rateLimits.socket.statePerMinute);
 
 function attachSocketServer(io) {
-  const db = getDb();
-
-  // ── কল state machine (রিং টাইমআউট হলে socket লেয়ারকে জানায়) ──────
-  const callManager = createCallManager({
-    db,
-    ringTimeoutMs: config.call.ringTimeoutMs,
-    onTimeout: (call) => {
-      handleCallTimeout(io, call).catch((err) => logger.error('[call] timeout handler:', err.message));
-    }
-  });
-
-  // ═════════════════════════════════════════════════════════════════
-  //  Handshake authentication middleware
-  // ═════════════════════════════════════════════════════════════════
-  io.use(async (socket, next) => {
+  // ═══════════════════════════════════════════════════════════════════
+  //  Handshake authentication — the token from the auth cookie is verified
+  //  here; socket.handshake.auth is never trusted on its own.
+  // ═══════════════════════════════════════════════════════════════════
+  io.use((socket, next) => {
     try {
       const fromAuth = socket.handshake.auth && socket.handshake.auth.token;
       const fromCookie = tokenFromCookieHeader(socket.handshake.headers.cookie);
       const payload = verifyToken(fromAuth || fromCookie);
-
       if (!payload || !payload.sub) {
         next(new Error('unauthorized'));
         return;
       }
-
-      const user = await db.users.findById(payload.sub);
-      if (!user || Number(payload.ver || 1) !== Number(user.tokenVersion || 1)) {
-        next(new Error('unauthorized'));
-        return;
-      }
-
-      // যাচাইকৃত পরিচয় socket-এ সংরক্ষণ (এর বাইরে কোনো পরিচয় বিশ্বাস নয়)
-      socket.data.user = { id: user.id, name: user.name, phone: user.phone };
+      socket.data.memberId = payload.sub;
       next();
     } catch (err) {
-      logger.warn('[socket] auth ব্যর্থ:', err.message);
+      logger.warn('[socket] auth failed:', err.message);
       next(new Error('unauthorized'));
     }
   });
 
-  // ═════════════════════════════════════════════════════════════════
-  //  Connection lifecycle
-  // ═════════════════════════════════════════════════════════════════
-  io.on('connection', async (socket) => {
-    const me = socket.data.user;
-    socket.join(userRoom(me.id));
+  io.on('connection', (socket) => {
+    const memberId = socket.data.memberId;
 
-    const becameOnline = presence.addSocket(me.id, socket.id);
-    logger.info(`[socket] connect — user=${me.id} socket=${socket.id} (online: ${presence.onlineCount()})`);
-
-    try {
-      if (becameOnline) {
-        await db.users.setPresence(me.id, true);
-        const watchers = await presenceWatchers(db, me);
-        emitPresence(io, watchers, { userId: me.id, isOnline: true, lastSeen: Date.now() });
-      }
-
-      // ── অফলাইনে থাকা অবস্থায় আসা মেসেজগুলো এখন delivered ─────────
-      const delivered = await db.messages.markDeliveredForReceiver(me.id);
-      if (delivered.length) {
-        const bySender = new Map();
-        for (const row of delivered) {
-          const key = `${row.senderId}:${row.conversationId}`;
-          if (!bySender.has(key)) bySender.set(key, { senderId: row.senderId, conversationId: row.conversationId, ids: [] });
-          bySender.get(key).ids.push(row.id);
-        }
-        for (const group of bySender.values()) {
-          emitDelivered(io, group.senderId, { conversationId: group.conversationId, ids: group.ids });
-        }
-      }
-
-      // ── ক্লায়েন্টকে জানানো: এখন সব ইভেন্ট পাঠানো নিরাপদ ────────────
-      socket.emit('ready', {
-        userId: me.id,
-        serverTime: Date.now(),
-        deliveredCount: delivered.length
-      });
-    } catch (err) {
-      logger.error('[socket] connection setup error:', err.message);
+    // ── Register in the room (handles reconnect with a new socket id) ──
+    const result = addParticipant(memberId, socket.id);
+    if (!result) {
+      logger.warn(`[socket] room full — rejecting member=${memberId}`);
+      socket.emit('room:full', { maxParticipants: config.room.maxParticipants });
+      socket.disconnect(true);
+      return;
+    }
+    // A second tab of the same browser reuses the member cookie; kick the
+    // older socket so each member has exactly one live connection.
+    if (result.replacedSocketId && result.replacedSocketId !== socket.id) {
+      const previous = io.sockets.sockets.get(result.replacedSocketId);
+      if (previous) previous.disconnect(true);
     }
 
-    // ── ইভেন্ট হ্যান্ডলার রেজিস্ট্রেশন ─────────────────────────────
-    registerChatHandlers({ io, socket });
-    registerCallHandlers({ io, socket, callManager });
+    socket.join(CHANNEL);
+    logger.info(`[socket] connect — member=${memberId} socket=${socket.id} (in room: ${room.participants.size})`);
 
-    // ── disconnect: presence + call cleanup ───────────────────────
-    socket.on('disconnect', async (reason) => {
-      const becameOffline = presence.removeSocket(me.id, socket.id);
-      logger.info(`[socket] disconnect — user=${me.id} (${reason})`);
+    // ── Initial state for the newcomer ────────────────────────────────
+    socket.emit('room:init', {
+      selfId: memberId,
+      memberName: room.memberName,
+      snapshot: snapshot()
+    });
 
-      try {
-        if (becameOffline) {
-          const lastSeen = Date.now();
-          await db.users.setPresence(me.id, false, lastSeen);
-          const watchers = await presenceWatchers(db, me);
-          emitPresence(io, watchers, { userId: me.id, isOnline: false, lastSeen });
+    // ── Broadcast the updated roster to everyone (newcomer included) ──
+    io.to(CHANNEL).emit('room:state', { snapshot: snapshot() });
+
+    // ═════════════════════════════════════════════════════════════════
+    //  WebRTC signaling — relayed only to the addressed peer
+    // ═════════════════════════════════════════════════════════════════
+    function relay(eventName) {
+      socket.on(eventName, (payload) => {
+        const data = payload && typeof payload === 'object' ? payload : {};
+        const target = typeof data.target === 'string' ? data.target : '';
+        if (!target || target === memberId) return;
+        if (!signalLimiter(`${memberId}:${eventName}`)) {
+          socket.emit('error:signal', { error: 'Signaling too fast — please wait a moment' });
+          return;
         }
-        // চলমান কল থাকলে পরিষ্কার করা
-        await cleanupCallsForUser(io, callManager, me.id);
-      } catch (err) {
-        logger.error('[socket] disconnect cleanup error:', err.message);
+        // Resolve member id → live socket id via the room roster.
+        const entry = getParticipant(target);
+        if (!entry) return; // peer already left
+        const { target: _routed, ...rest } = data;
+        io.to(entry.socketId).emit(eventName, {
+          from: memberId,
+          to: target,
+          ...rest // never echo the routing field
+        });
+      });
+    }
+
+    // offer / answer carry SDP; ice carries candidates. candidate may be
+    // null (end-of-candidates) — the envelope is always an object.
+    relay('webrtc:offer');
+    relay('webrtc:answer');
+    relay('webrtc:ice');
+
+    // ═════════════════════════════════════════════════════════════════
+    //  Media state (mic / camera / screen) — broadcast to everyone
+    // ═════════════════════════════════════════════════════════════════
+    socket.on('media:state', (payload) => {
+      const data = payload && typeof payload === 'object' ? payload : {};
+      const patch = {};
+      for (const kind of mediaKinds) {
+        if (typeof data[kind] === 'boolean') patch[kind] = data[kind];
+      }
+      if (!Object.keys(patch).length) return;
+      if (!stateLimiter(`${memberId}:media`)) return;
+
+      if (updateParticipantMedia(memberId, patch)) {
+        io.to(CHANNEL).emit('media:state', { memberId, ...patch });
+      }
+    });
+
+    // ═════════════════════════════════════════════════════════════════
+    //  Text chat — validated server-side, broadcast to everyone
+    // ═════════════════════════════════════════════════════════════════
+    socket.on('chat:send', (payload) => {
+      const raw = payload && typeof payload.text === 'string' ? payload.text : '';
+      const text = raw
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+        .trim()
+        .slice(0, config.chat.maxMessageLength);
+
+      if (!text) {
+        socket.emit('chat:rejected', { reason: 'empty' });
+        return;
+      }
+      if (!chatLimiter(memberId)) {
+        socket.emit('chat:rejected', { reason: 'rate_limited' });
+        return;
+      }
+
+      const message = pushMessage({ senderId: memberId, text });
+      io.to(CHANNEL).emit('chat:receive', message);
+    });
+
+    // ── Disconnect: drop from the room and tell the rest ─────────────
+    socket.on('disconnect', (reason) => {
+      logger.info(`[socket] disconnect — member=${memberId} (${reason})`);
+      const existed = removeParticipant(memberId, socket.id);
+      if (existed) {
+        io.to(CHANNEL).emit('room:state', { snapshot: snapshot() });
+        // Notify the remaining peers so they can tear down connections.
+        socket.to(CHANNEL).emit('peer:left', { memberId });
       }
     });
 
@@ -145,7 +175,7 @@ function attachSocketServer(io) {
     });
   });
 
-  return { callManager };
+  return {};
 }
 
 module.exports = { attachSocketServer };
