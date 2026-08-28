@@ -15,6 +15,7 @@
 
 const express = require('express');
 
+const config = require('../config');
 const { createAuthRouter } = require('./auth');
 const { createWebrtcRouter } = require('./webrtc');
 const { room } = require('../services/room');
@@ -34,14 +35,15 @@ function createApiRouter({ io }) {
     });
   });
 
-  // Public room info for the join screen (never leaks the password; the
-  
+  // Public room info for the join screen (never leaks the password —
+  // devPassword is only non-null when the built-in DEV default is in
+  // effect, which never happens in production).
   router.get('/room/info', (req, res) => {
     res.json({
       name: room.name,
       memberName: room.memberName,
       maxParticipants: room.maxParticipants,
-      
+      devPassword: config.room.devPassword
     });
   });
 

@@ -5,11 +5,18 @@
  * participant. Media (voice, video, screen) flows peer-to-peer in both
  * directions; the Socket.IO server only relays SDP/ICE.
  *
- * Transceiver convention — both sides add transceivers in the same order,
- * and WebRTC pairs transceivers positionally, so index → kind is stable:
+ * Transceiver convention — EVERY peer connection pre-creates all three
+ * transceivers in this fixed order BEFORE any local track is attached:
  *   0 → audio (microphone)
  *   1 → camera video
- *   2 → screen-share video (created lazily when sharing starts)
+ *   2 → screen-share video
+ * WebRTC pairs transceivers by mid, and mids are assigned in creation
+ * order, so the index → kind mapping above is stable on BOTH sides —
+ * even when one side has no mic or no camera (denied permission, missing
+ * device). If transceivers were created only from whatever local tracks
+ * happened to exist, a missing track would shift every later transceiver
+ * to the wrong slot and media would be silently dropped or delivered to
+ * the wrong place.
  *
  * Negotiation uses the "perfect negotiation" pattern plus one refinement:
  * only the member with the smaller id initiates the FIRST connection, so
@@ -73,6 +80,24 @@ export class Mesh {
     const polite = this.selfId > peerId; // larger id yields on collisions
     const pc = new RTCPeerConnection({ iceServers: this.iceServers });
 
+    // Fixed m-line layout for the whole life of this connection:
+    //   mid 0 → audio · mid 1 → camera · mid 2 → screen
+    // Pre-created as RECVONLY, no track, so the layout is identical on
+    // both sides even when a local track is missing — see file header.
+    //
+    // Recvonly matters: per the WebRTC spec (and WPT), addTrack() only
+    // reuses an existing null-track transceiver that has never sent, and
+    // a transceiver created with direction "sendrecv" counts as already
+    // used — addTrack would then create an EXTRA m-line and break the
+    // layout. Recvonly pre-creation is the spec-blessed way to reserve
+    // the m-line slots; addTrack() flips the slot to sendrecv when the
+    // first track lands on it.
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    // Kept: screen (re)starts after the first negotiation, where the
+    // slot must be re-armed via replaceTrack() + direction (see below).
+    const screenTransceiver = pc.addTransceiver('video', { direction: 'recvonly' });
+
     const peer = {
       id: peerId,
       pc,
@@ -85,7 +110,9 @@ export class Mesh {
       closed: false,
       recreateCount: 0,
       pendingCandidates: [], // ICE may arrive before the remote description
-      screenTransceiver: null, // our own send-side screen transceiver
+      screenTransceiver,
+      screenTrack: null, // local screen track currently on mid 2 (if any)
+      screenArmed: false, // true once mid 2 has carried a screen track
       stuckTimer: null
     };
 
@@ -100,8 +127,9 @@ export class Mesh {
 
     pc.ontrack = (event) => {
       if (peer.closed) return;
-      // Positional pairing: the index of the receiving transceiver tells
-      // what the remote side is sending on it (see header comment).
+      // The transceiver layout is fixed on both sides (0=audio, 1=cam,
+      // 2=screen — see header), so the receiving transceiver's position
+      // always tells what the remote side is sending on it.
       const index = pc.getTransceivers().indexOf(event.transceiver);
       const kind = event.track.kind === 'audio' ? 'audio' : KIND_BY_POSITION[index] || 'cam';
       const stream =
@@ -141,6 +169,12 @@ export class Mesh {
 
     this.peers.set(peerId, peer);
     this.#addLocalTracks(peer);
+    // The initiator (smaller id) starts the handshake right away — even
+    // when we have no local tracks yet or at all: the pre-created
+    // transceivers guarantee the offer always carries the full, stable
+    // m-line layout. The responder stays quiet (perfect negotiation) and
+    // its stuck timer covers a lost first offer.
+    if (!peer.waitForOffer) this.#makeOffer(peer).catch(() => {});
     return peer;
   }
 
@@ -148,33 +182,56 @@ export class Mesh {
     return this.peers.get(peerId) || this.#createPeer(peerId);
   }
 
+  /** Put (or re-put) the local screen track on mid 2 of one peer. */
+  #attachScreenTrack(peer, track) {
+    const { screenTransceiver, pc } = peer;
+    if (!screenTransceiver) return;
+    if (!peer.screenArmed) {
+      // First share on this connection: addTrack() reuses the reserved
+      // recvonly slot (mid 2 — the only null, never-sent video slot in
+      // mid order) and flips it to sendrecv.
+      pc.addTrack(track, media.screenStream);
+      peer.screenArmed = true;
+    } else {
+      // Slot already negotiated as sendonly/sendrecv (restart after a
+      // stop): re-arm it directly — addTrack() would NOT reuse a
+      // transceiver that has sent before and would inflate the m-lines.
+      screenTransceiver.direction = 'sendrecv';
+      screenTransceiver.sender.replaceTrack(track).catch(() => {});
+    }
+    peer.screenTrack = track;
+  }
+
   /** Add/replace the local screen track in every peer connection. */
   replaceScreenTrack(track) {
     for (const peer of this.peers.values()) {
       if (peer.closed) continue;
-      if (peer.screenTransceiver) {
-        peer.screenTransceiver.sender.replaceTrack(track).catch(() => {});
-      } else if (track) {
-        const sender = peer.pc.addTrack(track, media.screenStream);
-        peer.screenTransceiver = peer.pc.getTransceivers().find((t) => t.sender === sender) || null;
+      if (track) {
+        this.#attachScreenTrack(peer, track);
+      } else if (peer.screenTrack) {
+        // null → the slot keeps its negotiated layout but sends nothing;
+        // remotes hide it via the shared media state.
+        peer.screenTransceiver.sender.replaceTrack(null).catch(() => {});
+        peer.screenTrack = null;
       }
     }
   }
 
-  /** Add local mic/camera/screen tracks to a (new) peer connection. */
+  /** Attach local mic/camera/screen tracks to a (new) peer connection. */
   #addLocalTracks(peer) {
     const camStream = media.camStream;
-    if (!camStream) return;
-
-    const audioTrack = camStream.getAudioTracks()[0];
-    const camTrack = camStream.getVideoTracks()[0];
-    if (audioTrack) peer.pc.addTrack(audioTrack, camStream);
-    if (camTrack) peer.pc.addTrack(camTrack, camStream);
-    if (media.screenOn && media.screenTrack) {
-      const sender = peer.pc.addTrack(media.screenTrack, media.screenStream);
-      peer.screenTransceiver = peer.pc.getTransceivers().find((t) => t.sender === sender) || null;
+    if (camStream) {
+      // addTrack() reuses the reserved recvonly slot of the same kind in
+      // mid order: audio → mid 0, camera → mid 1 (layout is pre-fixed).
+      const audioTrack = camStream.getAudioTracks()[0];
+      const camTrack = camStream.getVideoTracks()[0];
+      if (audioTrack) peer.pc.addTrack(audioTrack, camStream);
+      if (camTrack) peer.pc.addTrack(camTrack, camStream);
+      peer.localTracksAdded = true; // refreshLocalTracks() can skip this peer
     }
-    peer.localTracksAdded = true;
+    if (media.screenOn && media.screenTrack) {
+      this.#attachScreenTrack(peer, media.screenTrack);
+    }
   }
 
   /**

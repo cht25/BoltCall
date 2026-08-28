@@ -386,6 +386,18 @@ input:focus-visible {
   color: #fda4af;
 }
 
+/* development-only default-password hint */
+.dev-hint {
+  margin: 10px 0 0;
+  padding: 11px 13px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fcd34d;
+  font-variant-numeric: tabular-nums;
+}
+
 .join-note {
   margin: 18px 0 0;
   font-size: 12.5px;
