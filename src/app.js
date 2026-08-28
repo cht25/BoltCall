@@ -1,12 +1,12 @@
 /**
  * src/app.js
  * ───────────────────────────────────────────────────────────────────────
- * Express অ্যাপ্লিকেশন ফ্যাক্টরি — সব middleware, static serving ও REST
- * route এখানে যুক্ত হয়। HTTP সার্ভার/Socket.IO বুটস্ট্র্যাপ আছে server.js-এ।
+ * Express application factory — middleware, static serving and the tiny
+ * REST API. The HTTP server + Socket.IO bootstrap lives in server.js.
  *
- * Middleware ক্রম (ক্রমটি নিরাপত্তার জন্য গুরুত্বপূর্ণ):
+ * Middleware order (security-relevant):
  *   helmet → cors → cookie parser → body parser → rate limit → CSRF
- *   → static → /api routes → 404 → error handler
+ *   → /api routes → static → 404 → error handler
  */
 
 'use strict';
@@ -20,7 +20,6 @@ const cookieParser = require('cookie-parser');
 const config = require('./config');
 const logger = require('./utils/logger');
 const { createApiRouter } = require('./routes');
-const { requireAuth } = require('./middleware/auth');
 const { csrfProtection } = require('./middleware/csrf');
 const { generalLimiter } = require('./middleware/rate-limit');
 const { notFoundHandler, errorHandler } = require('./middleware/error-handler');
@@ -30,12 +29,26 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 function createApp({ io }) {
   const app = express();
 
-  // Render/Nginx-এর পেছনে থাকলে client IP ও protocol proxy header থেকে নিতে হয়
+  // Behind Render/Nginx the client IP & protocol come from proxy headers.
   if (config.trustProxy) app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
   // ═══════════════════════════════════════════════════════════════════
-  //  ১) নিরাপত্তা হেডার (Helmet + CSP)
+  //  Socket.IO is attached to the same HTTP server BEFORE this Express
+  //  app (see server.js), so its request handler runs first. Express
+  //  must stay COMPLETELY silent for every /socket.io/* request: the
+  //  engine answers asynchronously (polling handshakes write headers on
+  //  a later tick), so any Express response here would race it and
+  //  produce "headers already sent" errors. Unknown sub-paths get their
+  //  4xx from the engine itself.
+  // ═══════════════════════════════════════════════════════════════════
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/socket.io')) return;
+    next();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  1) Security headers (Helmet + CSP)
   // ═══════════════════════════════════════════════════════════════════
   app.use(
     helmet({
@@ -43,13 +56,13 @@ function createApp({ io }) {
         useDefaults: true,
         directives: {
           defaultSrc: ["'self'"],
-          // কোনো inline <script> ব্যবহার করা হয়নি → 'unsafe-inline' লাগে না
+          // no inline <script> is used anywhere
           scriptSrc: ["'self'"],
-          // element.style / style attribute ব্যবহারের জন্য inline style অনুমোদিত
+          // element.style / style attributes are used → inline styles allowed
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", 'data:', 'blob:'],
           mediaSrc: ["'self'", 'blob:', 'data:'],
-          // Socket.IO (ws/wss) ও নিজের API
+          // Socket.IO (ws/wss) and our own API
           connectSrc: ["'self'", 'ws:', 'wss:'],
           fontSrc: ["'self'", 'data:'],
           objectSrc: ["'none'"],
@@ -59,7 +72,7 @@ function createApp({ io }) {
           upgradeInsecureRequests: config.isProduction ? [] : null
         }
       },
-      // iframe (dev preview) ব্লক না করার জন্য production ছাড়া frameguard বন্ধ
+      // allow iframe embedding (dev preview) outside production
       frameguard: config.isProduction ? { action: 'sameorigin' } : false,
       crossOriginEmbedderPolicy: false,
       crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -68,71 +81,46 @@ function createApp({ io }) {
   );
 
   // ═══════════════════════════════════════════════════════════════════
-  //  ২) CORS — ডিফল্টভাবে frontend একই origin থেকে serve হয়, তাই
-  //     CORS_ORIGIN খালি থাকলে request-এর নিজের origin প্রতিফলিত হয়।
+  //  2) CORS — by default the frontend is served from this same origin;
+  //     CORS_ORIGIN empty ⇒ origin is reflected.
   // ═══════════════════════════════════════════════════════════════════
   app.use(
     cors({
-      origin: config.corsOrigins.length ? config.corsOrigins : true,
-      credentials: true, // cookie-based session-এর জন্য অপরিহার্য
+      // Same-origin by default (no CORS headers needed at all).
+      // CORS_ORIGIN enables explicit cross-origin frontends.
+      origin: config.corsOrigins.length ? config.corsOrigins : false,
+      credentials: true, // cookie-based session
       methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
     })
   );
 
   // ═══════════════════════════════════════════════════════════════════
-  //  ৩) Body/cookie parsing
+  //  3) Body/cookie parsing
   // ═══════════════════════════════════════════════════════════════════
   app.use(cookieParser());
-  app.use(express.json({ limit: '256kb' })); // মিডিয়া multipart-এ যায়, JSON-এ নয়
-  app.use(express.urlencoded({ extended: false, limit: '256kb' }));
+  app.use(express.json({ limit: '64kb' }));
+  app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 
   // ═══════════════════════════════════════════════════════════════════
-  //  ৪) API: rate limit + CSRF + route
+  //  4) API: rate limit + CSRF + routes
   // ═══════════════════════════════════════════════════════════════════
   app.use('/api', generalLimiter, csrfProtection, createApiRouter({ io }));
 
   // ═══════════════════════════════════════════════════════════════════
-  //  ৫) আপলোড করা মিডিয়া — শুধু লগইন করা ইউজারের জন্য
-  //     (URL অনুমানযোগ্য না হলেও authentication বাড়তি সুরক্ষা)
-  // ═══════════════════════════════════════════════════════════════════
-  app.use(
-    '/uploads',
-    requireAuth,
-    express.static(config.upload.dir, {
-      index: false,
-      dotfiles: 'deny',
-      maxAge: '7d',
-      immutable: true,
-      setHeaders(res, filePath) {
-        // ব্রাউজারকে MIME অনুমান করতে দেওয়া হয় না (XSS প্রতিরোধ)
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        // ডকুমেন্ট সবসময় ডাউনলোড হিসেবে যায়, কখনো inline render নয়
-        if (filePath.includes(`${path.sep}files${path.sep}`)) {
-          res.setHeader('Content-Disposition', 'attachment');
-        }
-      }
-    })
-  );
-  // ফাইল না পেলে SPA fallback-এ না গিয়ে সরাসরি 404
-  app.use('/uploads', (req, res) => {
-    res.status(404).json({ error: 'ফাইল পাওয়া যায়নি', code: 'file_not_found' });
-  });
-
-  // ═══════════════════════════════════════════════════════════════════
-  //  ৬) PWA manifest (dynamic — যাতে যেকোনো ডোমেইনে কাজ করে)
+  //  5) PWA manifest (dynamic — works on any domain)
   // ═══════════════════════════════════════════════════════════════════
   app.get('/manifest.webmanifest', (req, res) => {
     res.type('application/manifest+json').json({
-      name: 'NexaChat',
-      short_name: 'NexaChat',
-      description: 'NexaChat — real-time messaging with audio & video calling',
+      name: 'BoltCall',
+      short_name: 'BoltCall',
+      description: 'BoltCall — one shared group call with audio, video, screen sharing and text chat',
       start_url: '/',
       scope: '/',
       display: 'standalone',
       background_color: '#070a13',
       theme_color: '#0bdcc8',
-      categories: ['communication', 'social'],
+      categories: ['communication'],
       icons: [
         { src: '/assets/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
         { src: '/assets/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
@@ -141,7 +129,7 @@ function createApp({ io }) {
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  //  ৭) Frontend static ফাইল
+  //  6) Frontend static files
   // ═══════════════════════════════════════════════════════════════════
   app.use(
     express.static(PUBLIC_DIR, {
@@ -149,14 +137,14 @@ function createApp({ io }) {
       etag: true,
       maxAge: config.isProduction ? '1h' : 0,
       setHeaders(res, filePath) {
-        // service worker কখনো ক্যাশ করা যাবে না, নাহলে আপডেট আটকে যায়
+        // never cache the service worker, or updates get stuck
         if (filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
       }
     })
   );
 
   // ═══════════════════════════════════════════════════════════════════
-  //  ৮) 404 (API) ও SPA fallback
+  //  7) 404 (API) and SPA fallback
   // ═══════════════════════════════════════════════════════════════════
   app.use(notFoundHandler);
   app.get('*', (req, res, next) => {
@@ -172,7 +160,7 @@ function createApp({ io }) {
 
   app.use(errorHandler);
 
-  logger.info('[app] Express অ্যাপ্লিকেশন প্রস্তুত');
+  logger.info('[app] BoltCall Express app ready');
   return app;
 }
 

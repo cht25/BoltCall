@@ -1,15 +1,13 @@
 /**
  * src/services/tokens.js
  * ───────────────────────────────────────────────────────────────────────
- * সেশন ব্যবস্থাপনা: JWT তৈরি/যাচাই + cookie সেট করা।
+ * Session handling for BoltCall: JWT create/verify + cookie helpers.
  *
- * কেন httpOnly cookie? — JWT localStorage-এ রাখলে XSS হলে token চুরি হয়ে
- * যায়। httpOnly cookie JavaScript পড়তে পারে না, তাই অনেক নিরাপদ। পাশাপাশি
- * CSRF ঠেকাতে double-submit pattern ব্যবহার করা হয়: একটি পড়ার-যোগ্য
- * csrf cookie + প্রতিটি state-changing request-এ X-CSRF-Token header।
- *
- * টোকেনে থাকে { sub: userId, ver: token_version }। ইউজারের token_version
- * বাড়ালে (যেমন পাসওয়ার্ড বদল) আগের সব token সাথে সাথে অকার্যকর হয়ে যায়।
+ * BoltCall has no user accounts. When a client enters the correct room
+ * password the server issues a short-lived signed JWT that identifies the
+ * participant INSIDE the room (sub = random member id) and nothing else.
+ * The token is stored in an httpOnly cookie (not readable by JavaScript),
+ * with a readable CSRF cookie alongside (double-submit pattern).
  */
 
 'use strict';
@@ -20,19 +18,19 @@ const config = require('../config');
 
 const TTL_SECONDS = config.sessionTtlDays * 24 * 60 * 60;
 
-/** ইউজারের জন্য signed JWT */
-function signToken(user) {
-  return jwt.sign({ sub: user.id, ver: user.tokenVersion || 1 }, config.sessionSecret, {
+/** Signed JWT for a room member: { sub: memberId } */
+function signToken(memberId) {
+  return jwt.sign({ sub: String(memberId) }, config.sessionSecret, {
     expiresIn: TTL_SECONDS,
-    issuer: 'nexachat'
+    issuer: 'boltcall'
   });
 }
 
-/** @returns {{sub:string, ver:number}|null} */
+/** @returns {{sub:string}|null} */
 function verifyToken(token) {
   if (!token || typeof token !== 'string') return null;
   try {
-    return jwt.verify(token, config.sessionSecret, { issuer: 'nexachat' });
+    return jwt.verify(token, config.sessionSecret, { issuer: 'boltcall' });
   } catch {
     return null;
   }
@@ -41,7 +39,7 @@ function verifyToken(token) {
 function cookieOptions() {
   return {
     httpOnly: true,
-    // Render/production-এ HTTPS বাধ্যতামূলক (WebRTC-ও secure context চায়)
+    // Production runs behind HTTPS; WebRTC requires a secure context anyway.
     secure: config.isProduction,
     sameSite: 'lax',
     maxAge: TTL_SECONDS * 1000,
@@ -49,11 +47,11 @@ function cookieOptions() {
   };
 }
 
-/** auth cookie + csrf cookie দুইটিই সেট করে */
+/** Auth cookie + CSRF cookie, issued together after a successful join. */
 function setAuthCookies(res, token) {
   res.cookie(config.cookieName, token, cookieOptions());
   res.cookie(config.csrfCookieName, crypto.randomBytes(24).toString('hex'), {
-    httpOnly: false, // frontend পড়ে header-এ পাঠাবে (double-submit)
+    httpOnly: false, // frontend reads it and echoes it in X-CSRF-Token
     secure: config.isProduction,
     sameSite: 'lax',
     maxAge: TTL_SECONDS * 1000,
@@ -66,7 +64,7 @@ function clearAuthCookies(res) {
   res.clearCookie(config.csrfCookieName, { path: '/' });
 }
 
-/** request থেকে token বের করা: cookie অথবা Authorization: Bearer */
+/** Token from cookie or Authorization: Bearer header. */
 function extractToken(req) {
   const fromCookie = req.cookies ? req.cookies[config.cookieName] : null;
   if (fromCookie) return { token: fromCookie, source: 'cookie' };
@@ -77,7 +75,7 @@ function extractToken(req) {
   return { token: null, source: null };
 }
 
-/** Socket.IO handshake-এর cookie header parse (cookie-parser এখানে নেই) */
+/** Socket.IO handshake carries a raw cookie header (no cookie-parser there). */
 function tokenFromCookieHeader(cookieHeader) {
   if (!cookieHeader) return null;
   const parts = String(cookieHeader).split(';');

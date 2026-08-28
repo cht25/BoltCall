@@ -1,17 +1,14 @@
 /**
  * src/routes/index.js
  * ───────────────────────────────────────────────────────────────────────
- * সব REST route এক জায়গায় মাউন্ট করা হয় (/api প্রিফিক্সে)।
+ * BoltCall REST API — intentionally tiny:
+ *   GET  /api/health              public liveness check
+ *   POST /api/auth/join           room password → session
+ *   GET  /api/auth/me             session validation
+ *   POST /api/auth/logout         clear session
+ *   GET  /api/webrtc/ice-servers  STUN/TURN config for the mesh
  *
- *   GET   /api/health                      (পাবলিক, কোনো গোপন তথ্য নেই)
- *   *     /api/auth/*                      register/login/logout/me/password
- *   *     /api/users/*                     ডিরেক্টরি, সার্চ, প্রোফাইল
- *   *     /api/contacts/*                  কনট্যাক্ট সিঙ্ক
- *   *     /api/conversations/*             চ্যাট লিস্ট, হিস্ট্রি, read, সার্চ
- *   *     /api/messages/*                  পাঠানো/এডিট/ডিলিট/সার্চ
- *   POST  /api/upload/{image,audio,file}   মিডিয়া আপলোড
- *   GET   /api/webrtc/ice-servers          STUN/TURN কনফিগ
- *   GET   /api/calls                       কল হিস্ট্রি
+ * Everything else (signaling, chat, presence) happens over Socket.IO.
  */
 
 'use strict';
@@ -19,36 +16,38 @@
 const express = require('express');
 
 const { createAuthRouter } = require('./auth');
-const { createUsersRouter } = require('./users');
-const { createContactsRouter } = require('./contacts');
-const { createConversationsRouter } = require('./conversations');
-const { createMessagesRouter } = require('./messages');
-const { createUploadRouter } = require('./upload');
 const { createWebrtcRouter } = require('./webrtc');
-const { createCallsRouter } = require('./calls');
-const presence = require('../services/presence');
+const { room } = require('../services/room');
 
 function createApiRouter({ io }) {
+  void io; // reserved for future REST-triggered broadcasts
   const router = express.Router();
 
-  // health check — Render এই endpoint দিয়ে service জীবিত কি না দেখে
+  // Health check — also used by Render to keep the service alive.
   router.get('/health', (req, res) => {
     res.json({
       ok: true,
-      app: 'NexaChat',
-      uptimeSeconds: Math.round(process.uptime()),
-      onlineUsers: presence.onlineCount()
+      app: 'BoltCall',
+      room: room.name,
+      participants: room.participants.size,
+      uptimeSeconds: Math.round(process.uptime())
+    });
+  });
+
+  // Public room info for the join screen (never leaks the password; the
+  // dev password hint only exists when the app runs without a configured
+  // ROOM_PASSWORD in a non-production environment).
+  router.get('/room/info', (req, res) => {
+    res.json({
+      name: room.name,
+      memberName: room.memberName,
+      maxParticipants: room.maxParticipants,
+      devPassword: room.devPassword || null
     });
   });
 
   router.use('/auth', createAuthRouter());
-  router.use('/users', createUsersRouter({ io }));
-  router.use('/contacts', createContactsRouter());
-  router.use('/conversations', createConversationsRouter({ io }));
-  router.use('/messages', createMessagesRouter({ io }));
-  router.use('/upload', createUploadRouter());
   router.use('/webrtc', createWebrtcRouter());
-  router.use('/calls', createCallsRouter());
 
   return router;
 }

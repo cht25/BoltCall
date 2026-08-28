@@ -1,38 +1,42 @@
 <!DOCTYPE html>
 <!--
   ╔══════════════════════════════════════════════════════════════════════╗
-  ║  NexaChat — public/index.html                                        ║
+  ║  BoltCall — public/index.html                                        ║
   ╚══════════════════════════════════════════════════════════════════════╝
-  একটি single-page অ্যাপ্লিকেশন। এখানে সব স্ক্রিন (auth, chat, modal,
-  call overlay) markup আকারে আছে; JavaScript শুধু দেখানো/লুকানো ও ডেটা
-  বাইন্ড করে। Accessibility-র জন্য semantic tag, aria-label, role ও
-  keyboard-friendly button ব্যবহার করা হয়েছে।
+  One shared group-call room. Enter the password → you are immediately in
+  the call with everyone. Voice, video, screen sharing (all directions)
+  and text chat. Every participant appears as "thamjj13" — no names are
+  ever asked for.
 -->
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#070a13" />
-    <meta name="description" content="NexaChat — real-time messaging with voice notes, image editing and 1-on-1 audio/video calls." />
+    <meta
+      name="description"
+      content="BoltCall — one shared group call with voice, video, screen sharing and text chat."
+    />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="/assets/icon-192.png" type="image/png" sizes="192x192" />
     <link rel="apple-touch-icon" href="/assets/icon-192.png" />
     <link rel="stylesheet" href="/style.css" />
-    <title>NexaChat</title>
+    <title>BoltCall — Group call</title>
   </head>
   <body>
-    <!-- ══════════════ প্রাথমিক লোডিং স্টেট ══════════════ -->
+    <!-- ══════════════ initial loading state ══════════════ -->
     <div id="appLoader" class="app-loader" role="status" aria-live="polite">
       <div class="loader-mark" aria-hidden="true"></div>
-      <p>Starting NexaChat…</p>
+      <p>Starting BoltCall…</p>
     </div>
 
-    <!-- ══════════════ AUTH SCREEN (login / register) ══════════════ -->
-    <main id="authScreen" class="auth-screen" hidden>
-      <section class="auth-brand">
+    <!-- ══════════════ JOIN SCREEN (password gate) ══════════════ -->
+    <main id="joinScreen" class="join-screen" hidden>
+      <section class="join-card glass">
         <div class="brand-lockup">
           <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 48 48" role="img" aria-label="NexaChat logo">
+            <svg viewBox="0 0 48 48" role="img" aria-label="BoltCall logo">
               <defs>
                 <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stop-color="#0bdcc8" />
@@ -41,682 +45,168 @@
               </defs>
               <path
                 fill="url(#brandGrad)"
-                d="M24 4C12.9 4 4 11.9 4 21.6c0 5.5 2.9 10.4 7.5 13.6L9.7 43a1.2 1.2 0 0 0 1.8 1.3l7.6-4.5c1.6.3 3.2.5 4.9.5 11.1 0 20-7.9 20-17.6S35.1 4 24 4Z"
+                d="M27.2 3.2c-.9 0-1.6.6-1.9 1.5l-4.6 14.9h-8.5c-1.2 0-2.1 1.1-1.8 2.3l4.9 18.4c.3 1.1 1.6 1.4 2.3.5l13.2-15.2c.8-.9.2-2.4-1.1-2.4h-6.6l5.3-17.6c.3-.9-.4-2.4-1.2-2.4Z"
               />
-              <path fill="#070a13" d="M17 19.5h14a1.5 1.5 0 0 1 0 3H17a1.5 1.5 0 0 1 0-3Zm0 6h9a1.5 1.5 0 0 1 0 3h-9a1.5 1.5 0 0 1 0-3Z" />
             </svg>
           </span>
           <div>
-            <h1>NexaChat</h1>
-            <p class="brand-tagline">Fast, private messaging &amp; calls</p>
+            <h1>BoltCall</h1>
+            <p class="brand-tagline">One password. One group call. Everyone together.</p>
           </div>
         </div>
-        <ul class="brand-points">
-          <li><span aria-hidden="true">⚡</span> Real-time messages with delivery &amp; read receipts</li>
-          <li><span aria-hidden="true">🎙️</span> Voice notes, image editor, document sharing</li>
-          <li><span aria-hidden="true">📹</span> Peer-to-peer audio &amp; video calls (WebRTC)</li>
-          <li><span aria-hidden="true">🔒</span> Hashed credentials, authenticated sockets</li>
-        </ul>
-        <p class="brand-note">
-          Demo build. Camera &amp; microphone require HTTPS (or localhost).
-        </p>
-      </section>
 
-      <section class="auth-panel glass">
-        <div class="auth-tabs" role="tablist" aria-label="Authentication">
-          <button class="auth-tab is-active" id="tabLogin" role="tab" aria-selected="true" aria-controls="loginForm" data-auth-tab="login">
-            Log in
-          </button>
-          <button class="auth-tab" id="tabRegister" role="tab" aria-selected="false" aria-controls="registerForm" data-auth-tab="register">
-            Create account
-          </button>
-        </div>
-
-        <!-- ── LOGIN ── -->
-        <form id="loginForm" class="auth-form" role="tabpanel" aria-labelledby="tabLogin" novalidate>
+        <form id="joinForm" class="join-form" novalidate>
           <label class="field">
-            <span>Phone number</span>
-            <input id="loginPhone" name="phone" type="tel" inputmode="tel" autocomplete="username"
-              placeholder="+8801712345678" required />
-          </label>
-          <label class="field">
-            <span>Password / PIN</span>
-            <input id="loginPassword" name="password" type="password" autocomplete="current-password"
-              placeholder="••••••••" required minlength="4" />
-          </label>
-          <p class="form-error" id="loginError" role="alert" hidden></p>
-          <button class="btn btn-primary btn-block" id="loginSubmit" type="submit">
-            <span class="btn-label">Log in</span>
-          </button>
-          <div class="demo-box">
-            <strong>Demo accounts</strong> (run <code>npm run seed</code>)
-            <ul>
-              <li><button type="button" class="link demo-fill" data-phone="+8801700000001">+8801700000001</button> — Rahim</li>
-              <li><button type="button" class="link demo-fill" data-phone="+8801700000002">+8801700000002</button> — Karim</li>
-              <li><button type="button" class="link demo-fill" data-phone="+8801700000003">+8801700000003</button> — Nusrat</li>
-            </ul>
-            <span>PIN: <code>nexa1234</code> — these are fictional demo numbers.</span>
-          </div>
-        </form>
-
-        <!-- ── REGISTER ── -->
-        <form id="registerForm" class="auth-form" role="tabpanel" aria-labelledby="tabRegister" hidden novalidate>
-          <div class="avatar-picker">
-            <button type="button" id="registerAvatarBtn" class="avatar-drop" aria-label="Choose profile picture">
-              <img id="registerAvatarPreview" alt="" hidden />
-              <span id="registerAvatarIcon" aria-hidden="true">＋</span>
-            </button>
-            <div>
-              <strong>Profile picture</strong>
-              <p class="muted">Optional · JPG/PNG/WEBP · resized in your browser</p>
-              <button type="button" class="link" id="registerAvatarClear" hidden>Remove</button>
+            <span>Room password</span>
+            <div class="password-row">
+              <input
+                id="joinPassword"
+                name="password"
+                type="password"
+                inputmode="text"
+                autocomplete="current-password"
+                placeholder="Enter the room password"
+                required
+              />
+              <button type="button" id="togglePassword" class="icon-btn" aria-label="Show password">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" />
+                  <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
             </div>
-            <input type="file" id="registerAvatarInput" accept="image/png,image/jpeg,image/webp" hidden />
-          </div>
-          <label class="field">
-            <span>Profile name</span>
-            <input id="registerName" name="name" type="text" autocomplete="name" placeholder="Rahim Uddin" required minlength="2" maxlength="60" />
           </label>
-          <label class="field">
-            <span>Phone number</span>
-            <input id="registerPhone" name="phone" type="tel" inputmode="tel" autocomplete="username" placeholder="01712345678 or +8801712345678" required />
-            <small class="hint">Stored normalised as <code>+8801712345678</code>. No OTP in this demo.</small>
-          </label>
-          <label class="field">
-            <span>Password / PIN</span>
-            <input id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="At least 4 characters" required minlength="4" />
-          </label>
-          <label class="field">
-            <span>About <em class="muted">(optional)</em></span>
-            <input id="registerAbout" name="about" type="text" maxlength="160" placeholder="Available" />
-          </label>
-          <p class="form-error" id="registerError" role="alert" hidden></p>
-          <button class="btn btn-primary btn-block" id="registerSubmit" type="submit">
-            <span class="btn-label">Create account</span>
+
+          <p id="joinError" class="form-error" role="alert" hidden></p>
+
+          <button type="submit" id="joinButton" class="btn-primary">
+            <span class="btn-label">Join the call</span>
           </button>
         </form>
+
+        <p id="devHint" class="dev-hint" hidden>
+          Dev password: <code>boltcall</code>
+        </p>
+
+        <p class="join-note">
+          No name, no signup. As soon as you enter the password you are in the group call
+          with everyone — voice, video, screen sharing and chat. Camera &amp; microphone
+          require HTTPS (or localhost).
+        </p>
       </section>
     </main>
 
-    <!-- ══════════════ MAIN APPLICATION ══════════════ -->
-    <div id="appShell" class="app-shell" hidden>
-      <!-- ─────────── SIDEBAR ─────────── -->
-      <aside id="sidebar" class="sidebar" aria-label="Chats and contacts">
-        <header class="sidebar-header">
-          <button id="myProfileBtn" class="avatar-btn" aria-label="Your profile">
-            <span class="avatar avatar-sm" id="myAvatar" data-initials="?"></span>
-          </button>
-          <div class="sidebar-brand">
-            <span class="brand-mark brand-mark-sm" aria-hidden="true">
-              <svg viewBox="0 0 48 48"><path d="M24 4C12.9 4 4 11.9 4 21.6c0 5.5 2.9 10.4 7.5 13.6L9.7 43a1.2 1.2 0 0 0 1.8 1.3l7.6-4.5c1.6.3 3.2.5 4.9.5 11.1 0 20-7.9 20-17.6S35.1 4 24 4Z" /></svg>
-            </span>
-            <strong>NexaChat</strong>
+    <!-- ══════════════ ROOM SCREEN (group call) ══════════════ -->
+    <main id="roomScreen" class="room-screen" hidden>
+      <header class="room-header">
+        <div class="brand-lockup brand-lockup--small">
+          <span class="brand-mark brand-mark--small" aria-hidden="true">
+            <svg viewBox="0 0 48 48" role="img" aria-label="BoltCall logo">
+              <path
+                fill="#0bdcc8"
+                d="M27.2 3.2c-.9 0-1.6.6-1.9 1.5l-4.6 14.9h-8.5c-1.2 0-2.1 1.1-1.8 2.3l4.9 18.4c.3 1.1 1.6 1.4 2.3.5l13.2-15.2c.8-.9.2-2.4-1.1-2.4h-6.6l5.3-17.6c.3-.9-.4-2.4-1.2-2.4Z"
+              />
+            </svg>
+          </span>
+          <div>
+            <h1>BoltCall</h1>
+            <p id="roomName">room</p>
           </div>
-          <div class="sidebar-actions">
-            <button class="icon-btn" id="newChatBtn" aria-label="New chat" title="New chat (Ctrl+K)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        </div>
+
+        <div class="room-status" role="status">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span id="participantCount">—</span>
+        </div>
+
+        <button id="leaveButton" class="btn-danger" type="button">Leave</button>
+      </header>
+
+      <div class="room-body">
+        <section class="stage" aria-label="Participants">
+          <div id="videoGrid" class="video-grid"></div>
+          <div id="roomEmpty" class="room-empty" hidden>
+            <p>You're in the call.</p>
+            <p class="muted">Waiting for others to join…</p>
+          </div>
+          <div id="connBanner" class="conn-banner" role="status" hidden>Reconnecting…</div>
+        </section>
+
+        <aside id="chatPanel" class="chat-panel" aria-label="Text chat">
+          <div class="chat-header">
+            <h2>Chat</h2>
+            <button id="closeChat" class="icon-btn" type="button" aria-label="Close chat">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M5 5l14 14M19 5L5 19" />
+              </svg>
             </button>
-            <button class="icon-btn" id="syncContactsBtn" aria-label="Sync contacts" title="Sync contacts">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4" /></svg>
+          </div>
+          <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+          <form id="chatForm" class="chat-form">
+            <input
+              id="chatInput"
+              type="text"
+              maxlength="1000"
+              placeholder="Message the room"
+              autocomplete="off"
+              aria-label="Chat message"
+            />
+            <button type="submit" class="btn-send" aria-label="Send message">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path fill="currentColor" d="M3.4 20.4 21.8 12 3.4 3.6l-.01 6.6L15 12 3.39 13.8l.01 6.6Z" />
+              </svg>
             </button>
-            <button class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 11.5 4a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 19.4 11a2 2 0 1 1 0 4Z" /></svg>
-            </button>
-          </div>
-        </header>
-
-        <div class="sidebar-search">
-          <svg viewBox="0 0 24 24" aria-hidden="true" class="search-icon"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-          <input id="sidebarSearch" type="search" placeholder="Search contacts…" aria-label="Search chats, contacts and messages" autocomplete="off" />
-          <button class="icon-btn tiny" id="sidebarSearchClear" aria-label="Clear search" hidden>✕</button>
-        </div>
-
-        <nav class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
-          <button class="tab is-active" role="tab" aria-selected="true" data-tab="chats" id="tabChats">
-            Chats <span class="badge" id="chatsBadge" hidden>0</span>
-          </button>
-          <button class="tab" role="tab" aria-selected="false" data-tab="contacts" id="tabContacts">Contacts</button>
-          <button class="tab" role="tab" aria-selected="false" data-tab="calls" id="tabCalls">Calls</button>
-        </nav>
-
-        <div class="sidebar-body">
-          <!-- CHATS -->
-          <section class="pane" id="chatsPane" role="tabpanel" aria-labelledby="tabChats">
-            <div class="skeleton-list" id="chatSkeleton">
-              <div class="skeleton-row"></div><div class="skeleton-row"></div>
-              <div class="skeleton-row"></div><div class="skeleton-row"></div>
-            </div>
-            <ul class="chat-list" id="chatList"></ul>
-            <div class="empty-state" id="chatsEmpty" hidden>
-              <div class="empty-art" aria-hidden="true">💬</div>
-              <h3>No conversations yet</h3>
-              <p>Start a chat from your contacts, or search a phone number.</p>
-              <button class="btn btn-primary" id="emptyNewChatBtn">Start a new chat</button>
-            </div>
-          </section>
-
-          <!-- CONTACTS -->
-          <section class="pane" id="contactsPane" role="tabpanel" aria-labelledby="tabContacts" hidden>
-            <div class="pane-section" id="registeredSection" hidden>
-              <h3 class="pane-heading">Registered contacts <span id="registeredCount" class="count"></span></h3>
-              <ul class="contact-list" id="registeredList"></ul>
-            </div>
-            <div class="pane-section" id="unregisteredSection" hidden>
-              <h3 class="pane-heading">Not using NexaChat <span id="unregisteredCount" class="count"></span></h3>
-              <ul class="contact-list muted-list" id="unregisteredList"></ul>
-            </div>
-            <div class="empty-state" id="contactsEmpty">
-              <div class="empty-art" aria-hidden="true">📇</div>
-              <h3>No contacts synced</h3>
-              <p>Import contacts you choose to share — NexaChat never reads your phone book on its own.</p>
-              <button class="btn btn-primary" id="emptySyncBtn">Sync contacts</button>
-            </div>
-          </section>
-
-          <!-- CALLS -->
-          <section class="pane" id="callsPane" role="tabpanel" aria-labelledby="tabCalls" hidden>
-            <ul class="call-list" id="callList"></ul>
-            <div class="empty-state" id="callsEmpty" hidden>
-              <div class="empty-art" aria-hidden="true">📞</div>
-              <h3>No calls yet</h3>
-              <p>Audio and video calls you make or receive will show up here.</p>
-            </div>
-          </section>
-        </div>
-
-        <footer class="sidebar-footer">
-          <span class="conn-dot" id="connDot" data-state="connecting" aria-hidden="true"></span>
-          <span id="connState">Connecting…</span>
-          <button class="link push-right" id="logoutBtn">Log out</button>
-        </footer>
-      </aside>
-
-      <!-- ─────────── CHAT PANEL ─────────── -->
-      <main id="chatPanel" class="chat-panel">
-        <div class="chat-empty" id="chatEmpty">
-          <div class="chat-empty-mark" aria-hidden="true">
-            <svg viewBox="0 0 48 48"><path d="M24 6C13.5 6 5 13 5 21.6c0 4.9 2.7 9.2 7 12.1L10.4 41l7-4.1c2 .5 4.3.8 6.6.8 10.5 0 19-7 19-15.6S34.5 6 24 6Z" /></svg>
-          </div>
-          <h2>Welcome to NexaChat</h2>
-          <p>Pick a conversation to start messaging. Everything is real-time — messages, receipts and calls.</p>
-          <dl class="shortcut-list">
-            <div><dt>Ctrl</dt><dt>K</dt><dd>New chat</dd></div>
-            <div><dt>/</dt><dd>Focus search</dd></div>
-            <div><dt>Ctrl</dt><dt>V</dt><dd>Paste image into chat</dd></div>
-            <div><dt>Esc</dt><dd>Close panel / cancel</dd></div>
-          </dl>
-        </div>
-
-        <div class="chat-view" id="chatView" hidden>
-          <header class="chat-header">
-            <button class="icon-btn mobile-only" id="backToListBtn" aria-label="Back to chat list">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-            </button>
-            <button class="chat-peer" id="partnerInfoBtn" aria-label="Contact info">
-              <span class="avatar" id="chatAvatar" data-initials="?"></span>
-              <span class="chat-peer-text">
-                <strong id="chatName">—</strong>
-                <small id="chatStatus" class="muted">offline</small>
-              </span>
-            </button>
-            <div class="chat-header-actions">
-              <button class="icon-btn" id="searchInChatBtn" aria-label="Search in conversation" title="Search in conversation">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-              </button>
-              <button class="icon-btn" id="audioCallBtn" aria-label="Audio call" title="Audio call">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3h3l1.5 4.5-2.2 1.6a12 12 0 0 0 5.9 6l1.7-2.2 4.5 1.5v3A2.5 2.5 0 0 1 18.5 20 15.5 15.5 0 0 1 4 5.5A2.5 2.5 0 0 1 6.6 3Z" /></svg>
-              </button>
-              <button class="icon-btn" id="videoCallBtn" aria-label="Video call" title="Video call">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="2.5" /><path d="m15 12 6-3.5v11L15 16" /></svg>
-              </button>
-            </div>
-          </header>
-
-          <div class="chat-search-bar" id="chatSearchBar" hidden>
-            <input id="chatSearchInput" type="search" placeholder="Search in this conversation…" aria-label="Search in this conversation" />
-            <span class="muted" id="chatSearchCount"></span>
-            <button class="icon-btn tiny" id="chatSearchClose" aria-label="Close search">✕</button>
-            <ul class="search-results" id="chatSearchResults"></ul>
-          </div>
-
-          <div class="message-scroller" id="messageScroller">
-            <div class="load-older">
-              <button class="btn btn-ghost btn-sm" id="loadOlderBtn" hidden>Load older messages</button>
-            </div>
-            <div class="skeleton-messages" id="messagesSkeleton" hidden>
-              <div class="skeleton-bubble in"></div><div class="skeleton-bubble out"></div>
-              <div class="skeleton-bubble in"></div><div class="skeleton-bubble out short"></div>
-            </div>
-            <div class="message-list" id="messageList" role="log" aria-live="polite" aria-relevant="additions"></div>
-            <div class="conversation-empty" id="conversationEmpty" hidden>
-              <p>No messages yet — say hello 👋</p>
-            </div>
-          </div>
-
-          <div class="typing-indicator" id="typingIndicator" hidden>
-            <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-            <span id="typingText">typing…</span>
-          </div>
-
-          <div class="composer-extra" id="replyBar" hidden>
-            <div class="reply-preview">
-              <small id="replyToName">You</small>
-              <span id="replyToText" class="ellipsis"></span>
-            </div>
-            <button class="icon-btn tiny" id="replyCancel" aria-label="Cancel reply">✕</button>
-          </div>
-
-          <div class="composer-extra" id="editBar" hidden>
-            <div class="reply-preview">
-              <small>Editing message</small>
-              <span id="editOriginalText" class="ellipsis"></span>
-            </div>
-            <button class="icon-btn tiny" id="editCancel" aria-label="Cancel editing">✕</button>
-          </div>
-
-          <div class="recording-bar" id="recordingBar" hidden>
-            <span class="rec-dot" aria-hidden="true"></span>
-            <span id="recordingTime" class="mono">0:00</span>
-            <span class="level-meter" aria-hidden="true"><i id="levelFill"></i></span>
-            <span class="muted">Recording voice message…</span>
-            <button class="btn btn-ghost btn-sm" id="recordCancel">Cancel</button>
-            <button class="btn btn-primary btn-sm" id="recordStop">Stop</button>
-          </div>
-
-          <div class="voice-preview" id="voicePreview" hidden>
-            <button class="icon-btn" id="voiceDiscard" aria-label="Discard recording">🗑</button>
-            <audio id="voicePreviewAudio" controls preload="metadata"></audio>
-            <span class="mono muted" id="voicePreviewTime">0:00</span>
-            <button class="btn btn-primary btn-sm" id="voiceSend">Send voice</button>
-          </div>
-
-          <footer class="composer">
-            <div class="composer-left">
-              <button class="icon-btn" id="emojiBtn" aria-label="Insert emoji" aria-expanded="false">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9 10h.01M15 10h.01M8.5 14.5a4.5 4.5 0 0 0 7 0" /></svg>
-              </button>
-              <button class="icon-btn" id="attachBtn" aria-label="Attach file" aria-expanded="false">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 12.5-8.5 8.5a5 5 0 0 1-7-7l8.9-8.9a3.4 3.4 0 0 1 4.8 4.8l-8.9 8.9a1.8 1.8 0 0 1-2.5-2.5l8-8" /></svg>
-              </button>
-            </div>
-            <div class="emoji-picker" id="emojiPicker" hidden role="dialog" aria-label="Emoji picker"></div>
-            <div class="attach-menu" id="attachMenu" hidden role="menu" aria-label="Attachment options">
-              <button role="menuitem" data-attach="image"><span aria-hidden="true">🖼️</span> Photo</button>
-              <button role="menuitem" data-attach="file"><span aria-hidden="true">📄</span> Document</button>
-            </div>
-            <label class="visually-hidden" for="composerInput">Message</label>
-            <textarea id="composerInput" rows="1" placeholder="Type a message…  (Ctrl+V pastes an image)" maxlength="4000" autocomplete="off"></textarea>
-            <div class="composer-right">
-              <button class="icon-btn" id="micBtn" aria-label="Record voice message" title="Record voice message">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
-              </button>
-              <button class="icon-btn send" id="sendBtn" aria-label="Send message" title="Send (Enter)">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-8-6 8 6 8-16-8Z" /></svg>
-              </button>
-            </div>
-          </footer>
-
-          <input type="file" id="imageFileInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
-          <input type="file" id="docFileInput" accept=".pdf,.txt,.zip,.doc,.docx" hidden />
-        </div>
-      </main>
-
-      <!-- ─────────── INFO PANEL ─────────── -->
-      <aside id="infoPanel" class="info-panel" aria-label="Contact information" hidden>
-        <header class="info-header">
-          <h2>Contact info</h2>
-          <button class="icon-btn" id="infoCloseBtn" aria-label="Close contact info">✕</button>
-        </header>
-        <div class="info-body">
-          <span class="avatar avatar-xl" id="infoAvatar" data-initials="?"></span>
-          <h3 id="infoName">—</h3>
-          <p class="mono muted" id="infoPhone">—</p>
-          <p class="info-presence" id="infoPresence">—</p>
-          <div class="info-block">
-            <h4>About</h4>
-            <p id="infoAbout">—</p>
-          </div>
-          <div class="info-actions">
-            <button class="btn btn-ghost" id="infoAudioCall"><span aria-hidden="true">📞</span> Audio call</button>
-            <button class="btn btn-ghost" id="infoVideoCall"><span aria-hidden="true">📹</span> Video call</button>
-          </div>
-          <div class="info-block">
-            <h4>Shared media</h4>
-            <div class="media-grid" id="infoMediaGrid"><p class="muted">No media yet.</p></div>
-          </div>
-        </div>
-      </aside>
-    </div>
-
-    <!-- ══════════════ MODALS ══════════════ -->
-
-    <!-- PROFILE -->
-    <div class="modal-backdrop" id="profileModal" hidden role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
-      <div class="modal glass">
-        <header class="modal-header">
-          <h2 id="profileModalTitle">Your profile</h2>
-          <button class="icon-btn" data-close-modal aria-label="Close">✕</button>
-        </header>
-        <div class="modal-body">
-          <div class="avatar-picker">
-            <button type="button" class="avatar-drop" id="profileAvatarBtn" aria-label="Change profile picture">
-              <img id="profileAvatarPreview" alt="" hidden />
-              <span id="profileAvatarInitials" aria-hidden="true">?</span>
-            </button>
-            <div>
-              <strong>Profile picture</strong>
-              <p class="muted">JPG/PNG/WEBP · max 10MB</p>
-              <button type="button" class="link" id="profileAvatarRemove">Remove photo</button>
-            </div>
-            <input type="file" id="profileAvatarInput" accept="image/png,image/jpeg,image/webp" hidden />
-          </div>
-          <label class="field">
-            <span>Profile name</span>
-            <input id="profileName" type="text" maxlength="60" />
-          </label>
-          <label class="field">
-            <span>About</span>
-            <input id="profileAbout" type="text" maxlength="160" placeholder="Available" />
-          </label>
-          <label class="field">
-            <span>Phone number</span>
-            <input id="profilePhone" type="text" readonly aria-readonly="true" />
-            <small class="hint">Phone number cannot be changed in this demo build.</small>
-          </label>
-          <div class="field-row">
-            <div>
-              <strong>Online status</strong>
-              <p class="muted" id="profileOnline">—</p>
-            </div>
-            <div>
-              <strong>Last seen</strong>
-              <p class="muted" id="profileLastSeen">—</p>
-            </div>
-          </div>
-        </div>
-        <footer class="modal-footer">
-          <button class="btn btn-ghost" data-close-modal>Cancel</button>
-          <button class="btn btn-primary" id="profileSave">Save changes</button>
-        </footer>
+          </form>
+        </aside>
       </div>
-    </div>
 
-    <!-- SETTINGS -->
-    <div class="modal-backdrop" id="settingsModal" hidden role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
-      <div class="modal glass">
-        <header class="modal-header">
-          <h2 id="settingsModalTitle">Settings</h2>
-          <button class="icon-btn" data-close-modal aria-label="Close">✕</button>
-        </header>
-        <div class="modal-body">
-          <h3 class="section-title">Privacy</h3>
-          <label class="field">
-            <span>Who can see my last seen &amp; online</span>
-            <select id="privacyLastSeen">
-              <option value="everyone">Everyone</option>
-              <option value="contacts">My contacts</option>
-              <option value="nobody">Nobody</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Who can see my profile photo</span>
-            <select id="privacyProfilePhoto">
-              <option value="everyone">Everyone</option>
-              <option value="contacts">My contacts</option>
-              <option value="nobody">Nobody</option>
-            </select>
-          </label>
-          <label class="switch-row">
-            <input type="checkbox" id="privacyReadReceipts" />
-            <span>Send read receipts (blue double ticks)</span>
-          </label>
+      <footer class="controls">
+        <button id="micButton" class="ctrl-btn is-active" type="button" aria-label="Toggle microphone" aria-pressed="true">
+          <span class="ctrl-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path fill="currentColor" d="M12 14.5a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5.5a3 3 0 0 0 3 3Z" />
+              <path fill="currentColor" d="M5.5 11.5a.9.9 0 0 1 1.8 0 4.7 4.7 0 0 0 9.4 0 .9.9 0 0 1 1.8 0 6.5 6.5 0 0 1-5.6 6.42V20h2.1a.9.9 0 1 1 0 1.8H8.9a.9.9 0 1 1 0-1.8H11v-2.08a6.5 6.5 0 0 1-5.5-6.42Z" />
+              <path class="off-slash" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M3 3l18 18" />
+            </svg>
+          </span>
+          <span class="ctrl-label">Mic</span>
+        </button>
 
-          <h3 class="section-title">Notifications</h3>
-          <label class="switch-row">
-            <input type="checkbox" id="notifyDesktop" />
-            <span>Desktop notifications for new messages &amp; calls</span>
-          </label>
-          <label class="switch-row">
-            <input type="checkbox" id="notifySound" />
-            <span>Play sound for incoming messages</span>
-          </label>
+        <button id="camButton" class="ctrl-btn is-active" type="button" aria-label="Toggle camera" aria-pressed="true">
+          <span class="ctrl-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path fill="currentColor" d="M8.8 6.2A4.2 4.2 0 0 1 16 6.5l3-2a1.2 1.2 0 0 1 2 .93v13.14a1.2 1.2 0 0 1-2 .93l-3-2a4.2 4.2 0 0 1-7.2.3V6.2Z" />
+              <path class="off-slash" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M3 3l18 18" />
+            </svg>
+          </span>
+          <span class="ctrl-label">Cam</span>
+        </button>
 
-          <h3 class="section-title">Security</h3>
-          <label class="field">
-            <span>Current password / PIN</span>
-            <input id="currentPassword" type="password" autocomplete="current-password" />
-          </label>
-          <label class="field">
-            <span>New password / PIN</span>
-            <input id="newPassword" type="password" autocomplete="new-password" minlength="4" />
-          </label>
-          <button class="btn btn-ghost" id="changePasswordBtn">Change password</button>
+        <button id="screenButton" class="ctrl-btn" type="button" aria-label="Share screen" aria-pressed="false">
+          <span class="ctrl-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 5.5h18v11H3z" />
+              <path fill="currentColor" d="M12 20.5l-3.4-3h6.8l-3.4 3Z" />
+            </svg>
+          </span>
+          <span class="ctrl-label">Screen</span>
+        </button>
 
-          <h3 class="section-title">Diagnostics</h3>
-          <dl class="diag-list">
-            <div><dt>Socket</dt><dd id="diagSocket">—</dd></div>
-            <div><dt>ICE source</dt><dd id="diagIce">—</dd></div>
-            <div><dt>Secure context</dt><dd id="diagSecure">—</dd></div>
-            <div><dt>Media devices</dt><dd id="diagMedia">—</dd></div>
-          </dl>
-          <button class="btn btn-ghost" id="refreshIceBtn">Re-check ICE servers</button>
-        </div>
-        <footer class="modal-footer">
-          <button class="btn btn-ghost" data-close-modal>Close</button>
-          <button class="btn btn-primary" id="settingsSave">Save settings</button>
-        </footer>
-      </div>
-    </div>
+        <button id="chatButton" class="ctrl-btn is-active" type="button" aria-label="Toggle chat" aria-pressed="true">
+          <span class="ctrl-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path fill="currentColor" d="M4 4.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9l-5.2 3.9a.6.6 0 0 1-.98-.48V15.5H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" />
+            </svg>
+          </span>
+          <span class="ctrl-label">Chat</span>
+          <span id="chatUnread" class="unread-badge" hidden>0</span>
+        </button>
+      </footer>
+    </main>
 
-    <!-- NEW CHAT -->
-    <div class="modal-backdrop" id="newChatModal" hidden role="dialog" aria-modal="true" aria-labelledby="newChatTitle">
-      <div class="modal glass">
-        <header class="modal-header">
-          <h2 id="newChatTitle">New chat</h2>
-          <button class="icon-btn" data-close-modal aria-label="Close">✕</button>
-        </header>
-        <div class="modal-body">
-          <label class="field">
-            <span>Search by name or phone number</span>
-            <input id="newChatSearch" type="search" placeholder="Rahim or +8801712345678" autocomplete="off" />
-          </label>
-          <ul class="user-result-list" id="newChatResults"></ul>
-          <p class="muted" id="newChatHint">Type at least 2 characters. Phone numbers are matched exactly after normalising.</p>
-        </div>
-      </div>
-    </div>
+    <div id="toastHost" class="toast-host" aria-live="polite"></div>
 
-    <!-- CONTACT SYNC -->
-    <div class="modal-backdrop" id="contactSyncModal" hidden role="dialog" aria-modal="true" aria-labelledby="contactSyncTitle">
-      <div class="modal glass modal-wide">
-        <header class="modal-header">
-          <h2 id="contactSyncTitle">Sync contacts</h2>
-          <button class="icon-btn" data-close-modal aria-label="Close">✕</button>
-        </header>
-        <div class="modal-body">
-          <p class="muted">
-            NexaChat never reads your phone book by itself. Either pick contacts with your browser's
-            contact picker (where supported), or paste the list you want to share.
-          </p>
-          <div class="sync-actions">
-            <button class="btn btn-ghost" id="pickContactsBtn"><span aria-hidden="true">📱</span> Use device contact picker</button>
-            <button class="btn btn-ghost" id="fillDemoContactsBtn"><span aria-hidden="true">🧪</span> Insert demo contacts</button>
-          </div>
-          <label class="field">
-            <span>Contacts (JSON array or <code>Name, +Phone</code> per line)</span>
-            <textarea id="contactSyncInput" rows="8" spellcheck="false" placeholder='[{"name":"Rahim","phone":"+8801712345678"},{"name":"Karim","phone":"+8801812345678"}]'></textarea>
-          </label>
-          <p class="form-error" id="contactSyncError" role="alert" hidden></p>
-          <div id="contactSyncResult" class="sync-result" hidden></div>
-        </div>
-        <footer class="modal-footer">
-          <button class="btn btn-ghost" data-close-modal>Close</button>
-          <button class="btn btn-primary" id="contactSyncSubmit">Sync contacts</button>
-        </footer>
-      </div>
-    </div>
-
-    <!-- IMAGE PREVIEW + CANVAS EDITOR -->
-    <div class="modal-backdrop" id="imageEditorModal" hidden role="dialog" aria-modal="true" aria-labelledby="imageEditorTitle">
-      <div class="modal glass modal-wide editor-modal">
-        <header class="modal-header">
-          <h2 id="imageEditorTitle">Send image</h2>
-          <button class="icon-btn" data-close-modal aria-label="Close">✕</button>
-        </header>
-
-        <div class="editor-toolbar" role="toolbar" aria-label="Image editing tools">
-          <div class="tool-group">
-            <button class="tool is-active" data-tool="draw" aria-pressed="true" title="Freehand draw">✏️<span>Draw</span></button>
-            <button class="tool" data-tool="highlight" aria-pressed="false" title="Highlighter">🖍️<span>Highlight</span></button>
-            <button class="tool" data-tool="arrow" aria-pressed="false" title="Arrow">➔<span>Arrow</span></button>
-            <button class="tool" data-tool="rect" aria-pressed="false" title="Rectangle">▭<span>Rect</span></button>
-            <button class="tool" data-tool="circle" aria-pressed="false" title="Circle">◯<span>Circle</span></button>
-            <button class="tool" data-tool="text" aria-pressed="false" title="Text">T<span>Text</span></button>
-            <button class="tool" data-tool="crop" aria-pressed="false" title="Crop">⛶<span>Crop</span></button>
-          </div>
-          <div class="tool-group">
-            <label class="color-field" title="Colour">
-              <input type="color" id="editorColor" value="#0bdcc8" aria-label="Colour" />
-            </label>
-            <label class="range-field" title="Brush size">
-              <input type="range" id="editorSize" min="1" max="30" value="4" aria-label="Brush size" />
-            </label>
-          </div>
-          <div class="tool-group">
-            <button class="tool" id="editorUndo" title="Undo (Ctrl+Z)">↶<span>Undo</span></button>
-            <button class="tool" id="editorRedo" title="Redo (Ctrl+Shift+Z)">↷<span>Redo</span></button>
-            <button class="tool" id="editorClear" title="Clear all annotations">🧹<span>Clear</span></button>
-            <button class="tool" id="editorApplyCrop" title="Apply crop" hidden>✅<span>Apply crop</span></button>
-          </div>
-        </div>
-
-        <div class="editor-stage" id="editorStage">
-          <canvas id="editorCanvas" aria-label="Image editor canvas"></canvas>
-        </div>
-
-        <footer class="modal-footer editor-footer">
-          <input id="imageCaption" class="caption-input" type="text" maxlength="1000" placeholder="Add a caption…" />
-          <div class="spacer"></div>
-          <button class="btn btn-ghost" id="editorCancel">Cancel</button>
-          <button class="btn btn-primary" id="editorSend">Save &amp; Send</button>
-        </footer>
-      </div>
-    </div>
-
-    <!-- DOCUMENT CONFIRM -->
-    <div class="modal-backdrop" id="fileConfirmModal" hidden role="dialog" aria-modal="true" aria-labelledby="fileConfirmTitle">
-      <div class="modal glass">
-        <header class="modal-header">
-          <h2 id="fileConfirmTitle">Send document</h2>
-          <button class="icon-btn" data-close-modal aria-label="Close">✕</button>
-        </header>
-        <div class="modal-body">
-          <div class="file-card">
-            <span class="file-icon" aria-hidden="true">📄</span>
-            <div>
-              <strong id="fileConfirmName">file.pdf</strong>
-              <p class="muted" id="fileConfirmMeta">—</p>
-            </div>
-          </div>
-          <label class="field">
-            <span>Caption (optional)</span>
-            <input id="fileCaption" type="text" maxlength="1000" />
-          </label>
-        </div>
-        <footer class="modal-footer">
-          <button class="btn btn-ghost" data-close-modal>Cancel</button>
-          <button class="btn btn-primary" id="fileConfirmSend">Send document</button>
-        </footer>
-      </div>
-    </div>
-
-    <!-- INCOMING CALL -->
-    <div class="call-overlay incoming" id="incomingCallModal" hidden role="dialog" aria-modal="true" aria-labelledby="incomingCallTitle">
-      <div class="incoming-card glass">
-        <p class="incoming-kind" id="incomingCallTitle">📞 Incoming audio call</p>
-        <span class="avatar avatar-xl pulse" id="incomingAvatar" data-initials="?"></span>
-        <h2 id="incomingName">Unknown</h2>
-        <p class="mono muted" id="incomingPhone">—</p>
-        <div class="incoming-actions">
-          <button class="btn btn-danger btn-round" id="rejectCallBtn" aria-label="Reject call">
-            <span aria-hidden="true">✕</span> Reject
-          </button>
-          <button class="btn btn-success btn-round" id="acceptCallBtn" aria-label="Accept call">
-            <span aria-hidden="true">✓</span> Accept
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ACTIVE CALL -->
-    <div class="call-overlay active-call" id="activeCallModal" hidden role="dialog" aria-modal="true" aria-labelledby="activeCallState">
-      <div class="call-stage" id="callStage">
-        <video id="remoteVideo" class="remote-video" autoplay playsinline></video>
-        <audio id="remoteAudio" autoplay></audio>
-        <div class="call-peer-card" id="callPeerCard">
-          <span class="avatar avatar-xl" id="callPeerAvatar" data-initials="?"></span>
-          <h2 id="callPeerName">—</h2>
-          <p id="activeCallState" class="call-state">Calling…</p>
-          <p class="mono call-timer" id="callTimer" hidden>0:00</p>
-          <p class="call-warning" id="callWarning" hidden></p>
-        </div>
-        <video id="localVideo" class="local-video" autoplay playsinline muted hidden></video>
-
-        <div class="call-controls" role="toolbar" aria-label="Call controls">
-          <button class="call-btn" id="toggleMicBtn" aria-pressed="false" aria-label="Mute microphone" title="Mute (M)">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
-          </button>
-          <button class="call-btn" id="toggleCamBtn" aria-pressed="false" aria-label="Turn camera off" title="Camera (C)">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="2.5" /><path d="m15 12 6-3.5v11L15 16" /></svg>
-          </button>
-          <button class="call-btn" id="flipCamBtn" aria-label="Flip camera" title="Flip camera">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4" /></svg>
-          </button>
-          <button class="call-btn" id="toggleSpeakerBtn" aria-pressed="true" aria-label="Toggle speaker" title="Speaker">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h3l5-4v14l-5-4H4Z" /><path d="M16 9a4 4 0 0 1 0 6" /></svg>
-          </button>
-          <button class="call-btn end" id="endCallBtn" aria-label="End call" title="End call">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3h3l1.5 4.5-2.2 1.6a12 12 0 0 0 5.9 6l1.7-2.2 4.5 1.5v3A2.5 2.5 0 0 1 18.5 20 15.5 15.5 0 0 1 4 5.5A2.5 2.5 0 0 1 6.6 3Z" /><path d="M3 21 21 3" /></svg>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- IMAGE LIGHTBOX -->
-    <div class="modal-backdrop lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Image preview">
-      <button class="icon-btn lightbox-close" data-close-modal aria-label="Close image">✕</button>
-      <img id="lightboxImage" alt="Shared image full size" />
-      <a class="btn btn-ghost lightbox-download" id="lightboxDownload" download>Download</a>
-    </div>
-
-    <!-- CONFIRM DIALOG -->
-    <div class="modal-backdrop" id="confirmModal" hidden role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-      <div class="modal glass modal-narrow">
-        <header class="modal-header">
-          <h2 id="confirmTitle">Are you sure?</h2>
-        </header>
-        <div class="modal-body"><p id="confirmText">—</p></div>
-        <footer class="modal-footer">
-          <button class="btn btn-ghost" id="confirmCancel">Cancel</button>
-          <button class="btn btn-danger" id="confirmOk">Confirm</button>
-        </footer>
-      </div>
-    </div>
-
-    <!-- MESSAGE CONTEXT MENU -->
-    <div class="context-menu" id="messageMenu" hidden role="menu" aria-label="Message actions">
-      <button role="menuitem" data-action="reply"><span aria-hidden="true">↩</span> Reply</button>
-      <button role="menuitem" data-action="copy"><span aria-hidden="true">⧉</span> Copy text</button>
-      <button role="menuitem" data-action="edit"><span aria-hidden="true">✎</span> Edit</button>
-      <button role="menuitem" data-action="delete-me"><span aria-hidden="true">🙈</span> Delete for me</button>
-      <button role="menuitem" data-action="delete-all" class="danger"><span aria-hidden="true">🗑</span> Delete for everyone</button>
-    </div>
-
-    <!-- TOASTS -->
-    <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
-
-    <!-- Socket.IO client (একই সার্ভার থেকে serve হয় — CSP 'self' মেনে চলে) -->
     <script src="/socket.io/socket.io.js"></script>
-    <script type="module" src="/script.js"></script>
+    <script type="module" src="/js/app.js"></script>
   </body>
 </html>

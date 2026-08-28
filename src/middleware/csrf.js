@@ -1,17 +1,17 @@
 /**
  * src/middleware/csrf.js
  * ───────────────────────────────────────────────────────────────────────
- * CSRF সুরক্ষা — "double submit cookie" পদ্ধতি।
+ * CSRF protection — the "double submit cookie" pattern.
  *
- * কীভাবে কাজ করে: লগইনের সময় সার্ভার দুইটি cookie দেয় —
- *   • nexachat_token (httpOnly, JS পড়তে পারে না)
- *   • nexachat_csrf  (সাধারণ cookie, frontend পড়তে পারে)
- * প্রতিটি state-changing request (POST/PUT/PATCH/DELETE)-এ frontend
- * X-CSRF-Token header-এ csrf cookie-র মান পাঠায়। অন্য কোনো সাইট আমাদের
- * cookie পড়তে পারে না, তাই সেই header বানাতেও পারে না → CSRF আটকে যায়।
+ * How it works: joining issues two cookies —
+ *   • boltcall_token (httpOnly, JavaScript cannot read it)
+ *   • boltcall_csrf  (readable cookie, the frontend echoes it back)
+ * Every state-changing request (POST/PUT/PATCH/DELETE) must carry
+ * X-CSRF-Token: <value of the csrf cookie>. Another site cannot read our
+ * cookies, so it cannot forge that header → CSRF is blocked.
  *
- * নোট: Authorization: Bearer দিয়ে আসা request-এ CSRF ঝুঁকি নেই (ব্রাউজার
- * স্বয়ংক্রিয়ভাবে header পাঠায় না), তাই সেগুলো ছাড় পায়।
+ * Note: requests authenticated with Authorization: Bearer are exempt —
+ * browsers never attach that header automatically, so no CSRF risk.
  */
 
 'use strict';
@@ -27,7 +27,7 @@ function csrfProtection(req, res, next) {
     return;
   }
 
-  // Bearer token ব্যবহারকারী API client → CSRF প্রযোজ্য নয়
+  // Bearer-authenticated API clients → CSRF does not apply
   const authHeader = req.headers.authorization || '';
   if (authHeader.startsWith('Bearer ')) {
     next();
@@ -35,7 +35,7 @@ function csrfProtection(req, res, next) {
   }
 
   const cookieToken = req.cookies ? req.cookies[config.csrfCookieName] : null;
-  // লগইন/রেজিস্ট্রেশনের সময় এখনো কোনো সেশন cookie নেই — রক্ষার কিছু নেই
+  // No session cookie yet (e.g. during /auth/join) → nothing to protect
   if (!req.cookies || !req.cookies[config.cookieName]) {
     next();
     return;
@@ -43,7 +43,7 @@ function csrfProtection(req, res, next) {
 
   const headerToken = req.headers['x-csrf-token'] || req.headers['x-xsrf-token'];
   if (!cookieToken || !headerToken || String(headerToken) !== String(cookieToken)) {
-    next(forbidden('CSRF টোকেন অবৈধ — পেজটি রিফ্রেশ করে আবার চেষ্টা করুন', 'csrf_invalid'));
+    next(forbidden('CSRF token invalid — refresh the page and try again', 'csrf_invalid'));
     return;
   }
   next();

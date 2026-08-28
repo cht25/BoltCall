@@ -1,10 +1,11 @@
 /**
  * src/utils/logger.js
  * ───────────────────────────────────────────────────────────────────────
- * খুব হালকা একটি logger। উদ্দেশ্য দুইটি:
- *   ১) সার্ভার সাইডে টেকনিক্যাল error লগ করা (client-কে stack trace দেখানো হয় না)
- *   ২) লগে যেন ভুলেও secret (API key, token, password) না যায় — তাই
- *      redact() ফাংশন দিয়ে সংবেদনশীল key-গুলোর মান ঢেকে দেওয়া হয়।
+ * A very light logger. Two goals:
+ *   1) technical error logging on the server (stack traces never reach
+ *      the client)
+ *   2) secrets (API keys, tokens, passwords) never appear in logs —
+ *      redact() masks known sensitive keys.
  */
 
 'use strict';
@@ -24,7 +25,7 @@ const SENSITIVE_KEYS = [
   'sessionsecret'
 ];
 
-/** সংবেদনশীল ফিল্ডের মান লগ থেকে সরিয়ে দেয় (recursive) */
+/** Mask sensitive field values in log output (recursive). */
 function redact(value, depth = 0) {
   if (depth > 4 || value === null || value === undefined) return value;
   if (Array.isArray(value)) return value.map((item) => redact(item, depth + 1));

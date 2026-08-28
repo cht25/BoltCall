@@ -1,18 +1,18 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  NexaChat — server.js (এন্ট্রি পয়েন্ট)                              ║
- * ║  Express + Socket.IO + SQLite + WebRTC signaling                    ║
+ * ║  BoltCall — server.js (entry point)                                  ║
+ * ║  Express + Socket.IO + WebRTC signaling (single group-call room)     ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  *
- * বুট ক্রম:
- *   ১) ডাটাবেস init (স্কিমা তৈরি — হাতে কোনো SQL চালাতে হয় না)
- *   ২) আপলোড ডিরেক্টরি তৈরি
- *   ৩) Express অ্যাপ তৈরি (src/app.js)
- *   ৪) HTTP সার্ভার + Socket.IO সংযুক্ত (একই পোর্টে)
- *   ৫) PORT-এ listen — process.env.PORT অগ্রাধিকার পায় (Render-এর জন্য
- *      অপরিহার্য), না থাকলে 3000। host 0.0.0.0 যাতে কনটেইনারের বাইরে থেকে
- *      অ্যাক্সেস করা যায়।
- *   ৬) SIGTERM/SIGINT-এ graceful shutdown (socket বন্ধ, DB বন্ধ)
+ * Boot order:
+ *   1) HTTP server + Socket.IO (same port)
+ *   2) Express app attached
+ *   3) listen on PORT (process.env.PORT first — Render requires it),
+ *      falling back to 3000, host 0.0.0.0
+ *   4) graceful shutdown on SIGTERM/SIGINT
+ *
+ * There is no database: the room lives in memory. Deploy as a single
+ * instance (render.yaml already sets numInstances: 1).
  */
 
 'use strict';
@@ -22,32 +22,26 @@ const { Server } = require('socket.io');
 
 const config = require('./src/config');
 const logger = require('./src/utils/logger');
-const { initDatabase, getDb, closeDatabase } = require('./database');
 const { createApp } = require('./src/app');
-const { ensureUploadDirs } = require('./src/services/uploads');
 const { attachSocketServer } = require('./src/sockets');
 
-async function bootstrap() {
-  // ── ১) ডাটাবেস ─────────────────────────────────────────────────
-  await initDatabase();
-
-  // ── ২) মিডিয়া ডিরেক্টরি ────────────────────────────────────────
-  ensureUploadDirs();
-
-  // ── ৩+৪) HTTP + Socket.IO ─────────────────────────────────────
+function bootstrap() {
+  // ── 1+2) HTTP + Socket.IO ────────────────────────────────────────────
   const httpServer = http.createServer();
 
   const io = new Server(httpServer, {
-    // frontend একই origin থেকে আসে; CORS_ORIGIN দিলে সেগুলোই অনুমোদিত
+    // Frontend is served from the same origin, so cross-origin requests are
+    // not needed (Socket.IO rejects foreign origins by default). CORS_ORIGIN
+    // overrides when the frontend is hosted elsewhere.
     cors: {
-      origin: config.corsOrigins.length ? config.corsOrigins : true,
+      ...(config.corsOrigins.length ? { origin: config.corsOrigins } : {}),
       credentials: true
     },
-    // signaling ছোট payload; বড় মিডিয়া HTTP আপলোডে যায়
+    // signaling payloads are small (SDP/ICE/candidates/chat)
     maxHttpBufferSize: 1e6,
     pingTimeout: 25000,
     pingInterval: 20000,
-    // reconnect যেন দ্রুত ও নির্ভরযোগ্য হয়
+    // reconnect quickly and reliably
     connectionStateRecovery: {
       maxDisconnectionDuration: 2 * 60 * 1000,
       skipMiddlewares: false
@@ -59,50 +53,38 @@ async function bootstrap() {
 
   attachSocketServer(io);
 
-  // ── ৫) listen ─────────────────────────────────────────────────
-  await new Promise((resolve) => httpServer.listen(config.port, '0.0.0.0', resolve));
+  // ── 3) listen ───────────────────────────────────────────────────────
+  httpServer.listen(config.port, '0.0.0.0', () => {
+    logger.success(`BoltCall running → http://0.0.0.0:${config.port}  (env: ${config.env})`);
+    logger.info(`Room: ${config.room.name} · member name: ${config.room.memberName} · max ${config.room.maxParticipants} participants`);
+    if (!config.metered.apiKey && !config.metered.turnUsername) {
+      logger.warn(
+        'No Metered TURN credentials — calls will only connect on easy NAT. Set METERED_API_KEY + METERED_DOMAIN in .env.'
+      );
+    }
+  });
 
-  logger.success(`NexaChat চলছে → http://0.0.0.0:${config.port}  (env: ${config.env})`);
-  logger.info(`ডাটাবেস: ${config.db.path}`);
-  logger.info(`আপলোড ডিরেক্টরি: ${config.upload.dir} (সর্বোচ্চ ${config.upload.maxFileSizeMb}MB)`);
-  if (!config.metered.apiKey && !config.metered.turnUsername) {
-    logger.warn(
-      'Metered TURN credential নেই — কল শুধু সহজ NAT-এ কাজ করবে। .env-এ METERED_API_KEY + METERED_DOMAIN দিন।'
-    );
-  }
-  if (!config.isProduction) {
-    logger.info('ডেমো অ্যাকাউন্ট তৈরি করতে: npm run seed');
-  }
-
-  // ── ৬) Graceful shutdown ──────────────────────────────────────
+  // ── 4) Graceful shutdown ────────────────────────────────────────────
   let shuttingDown = false;
-  const shutdown = async (signal) => {
+  const shutdown = (signal) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    logger.info(`[server] ${signal} — বন্ধ করা হচ্ছে...`);
-
-    // সব socket ইউজারকে offline চিহ্নিত করা (presence পরিষ্কার রাখা)
-    try {
-      await getDb().users.markAllOffline();
-    } catch (err) {
-      logger.warn('[server] presence রিসেট ব্যর্থ:', err.message);
-    }
+    logger.info(`[server] ${signal} — shutting down...`);
 
     io.close();
-    httpServer.close(async () => {
-      await closeDatabase();
-      logger.success('[server] পরিষ্কারভাবে বন্ধ হয়েছে');
+    httpServer.close(() => {
+      logger.success('[server] clean shutdown complete');
       process.exit(0);
     });
 
-    // ১০ সেকেন্ডেও বন্ধ না হলে জোর করে বন্ধ
+    // force-exit if something refuses to close within 10s
     setTimeout(() => process.exit(1), 10000).unref();
   };
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  // ── অপ্রত্যাশিত error: লগ করা হয়, প্রসেস টিকে থাকে (uptime রক্ষা) ──
+  // ── unexpected errors: log, keep the process alive (uptime) ─────────
   process.on('unhandledRejection', (reason) => {
     logger.error('[process] unhandledRejection:', reason && (reason.stack || reason.message || reason));
   });
@@ -113,12 +95,9 @@ async function bootstrap() {
   return { app, io, httpServer };
 }
 
-// সরাসরি চালানো হলে বুট করা হয় (require করলে নয় — টেস্টের সুবিধা)
+// Boot when run directly (not when required — for tests)
 if (require.main === module) {
-  bootstrap().catch((err) => {
-    logger.error('[server] বুট ব্যর্থ:', err && (err.stack || err.message));
-    process.exit(1);
-  });
+  bootstrap();
 }
 
 module.exports = { bootstrap };
