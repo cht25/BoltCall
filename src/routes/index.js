@@ -35,14 +35,13 @@ function createApiRouter({ io }) {
   });
 
   // Public room info for the join screen (never leaks the password; the
-  // dev password hint only exists when the app runs without a configured
-  // ROOM_PASSWORD in a non-production environment).
+  
   router.get('/room/info', (req, res) => {
     res.json({
       name: room.name,
       memberName: room.memberName,
       maxParticipants: room.maxParticipants,
-      devPassword: room.devPassword || null
+      
     });
   });
 

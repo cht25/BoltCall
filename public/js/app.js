@@ -38,7 +38,7 @@ async function boot() {
 }
 
 async function showJoin() {
-  const info = await api.roomInfo().catch(() => ({ devPassword: null }));
+  await api.roomInfo().catch(() => ({}));
   ui.showJoin(info);
 }
 
@@ -363,6 +363,8 @@ document.getElementById('camButton').addEventListener('click', handleCam);
 document.getElementById('screenButton').addEventListener('click', handleScreen);
 document.getElementById('chatButton').addEventListener('click', () => ui.toggleChat());
 document.getElementById('closeChat').addEventListener('click', () => ui.setChatOpen(false));
+  const shareBtn = document.getElementById('shareLinkButton');
+  if (shareBtn) shareBtn.addEventListener('click', copyShareLink);
 document.getElementById('chatForm').addEventListener('submit', handleChatSubmit);
 document.getElementById('leaveButton').addEventListener('click', () => leave());
 
@@ -374,3 +376,14 @@ media.onScreenEnd = () => {
 };
 
 boot();
+
+
+function copyShareLink() {
+  const url = window.location.origin + '/call/thamjj13?=' + Date.now();
+  navigator.clipboard.writeText(url).then(() => {
+    ui.toast('Call link copied to clipboard!', 'success');
+  }).catch(() => {
+    ui.toast('Failed to copy link.', 'error');
+  });
+}
+

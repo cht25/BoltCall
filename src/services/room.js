@@ -26,8 +26,7 @@ const MEDIA_RESET = Object.freeze({ mic: false, cam: false, screen: false });
 const room = {
   name: config.room.name,
   memberName: config.room.memberName,
-  // only exposed via /api/room/info in development (see config.resolveRoomPassword)
-  devPassword: config.room.password.devHint || null,
+    
   participants: new Map(), // memberId → participant
   history: [], // [{ id, senderId, senderName, text, at }]
   historySeq: 0

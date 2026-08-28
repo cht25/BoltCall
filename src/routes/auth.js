@@ -97,7 +97,7 @@ function createAuthRouter() {
         room: {
           name: config.room.name,
           maxParticipants: config.room.maxParticipants,
-          devPassword: !config.isProduction ? config.room.password.devHint || null : null
+          
         }
       });
     })

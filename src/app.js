@@ -118,8 +118,8 @@ function createApp({ io }) {
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      background_color: '#070a13',
-      theme_color: '#0bdcc8',
+      background_color: '#f5f7fa',
+      theme_color: '#2ecc71',
       categories: ['communication'],
       icons: [
         { src: '/assets/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },

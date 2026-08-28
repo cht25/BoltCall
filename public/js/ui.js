@@ -18,6 +18,7 @@ class UI {
     this.unread = 0;
     this.lastDay = null;
     this.historyIds = new Set();
+    this.manualSpotlightId = null;
   }
 
   loading(show) {
@@ -27,17 +28,11 @@ class UI {
 
   // ══════════════════════ screens ══════════════════════
 
-  showJoin({ devPassword }) {
+  showJoin() {
     document.getElementById('joinScreen').hidden = false;
     document.getElementById('roomScreen').hidden = true;
     const hint = document.getElementById('devHint');
-    if (devPassword) {
-      hint.querySelector('code').textContent = devPassword;
-      hint.hidden = false;
-    } else {
-      hint.hidden = true;
-    }
-    document.getElementById('joinPassword').focus();
+        document.getElementById('joinPassword').focus();
   }
 
   showRoom() {
@@ -91,6 +86,53 @@ class UI {
 
   // ══════════════════════ tiles ══════════════════════
 
+  updateGridLayout() {
+    const grid = document.getElementById('videoGrid');
+    if (!grid) return;
+
+    let targetSpotlightId = this.manualSpotlightId;
+
+    if (!targetSpotlightId || !this.tiles.has(targetSpotlightId)) {
+      this.manualSpotlightId = null;
+      targetSpotlightId = null;
+
+      // Find first person sharing screen
+      for (const [id, tileInfo] of this.tiles) {
+        if (tileInfo.node.classList.contains('is-sharing')) {
+          targetSpotlightId = id;
+          break;
+        }
+      }
+
+      // If exactly 2 people, spotlight the remote user
+      if (!targetSpotlightId && this.tiles.size === 2) {
+        for (const [id] of this.tiles) {
+          if (id !== this.selfId) {
+            targetSpotlightId = id;
+            break;
+          }
+        }
+      }
+    }
+
+    if (targetSpotlightId) {
+      grid.classList.add('has-spotlight');
+    } else {
+      grid.classList.remove('has-spotlight');
+    }
+
+    for (const [id, tileInfo] of this.tiles) {
+      if (id === targetSpotlightId) {
+        tileInfo.node.classList.add('tile--spotlight');
+      } else {
+        tileInfo.node.classList.remove('tile--spotlight');
+      }
+    }
+  }
+
+  // =====
+
+
   /** Render the roster. Removes tiles of participants who left. */
   renderRoster(participants) {
     const grid = document.getElementById('videoGrid');
@@ -106,6 +148,7 @@ class UI {
     }
 
     document.getElementById('roomEmpty').hidden = participants.length > 0;
+    this.updateGridLayout();
   }
 
   #addTile(memberId) {
@@ -114,14 +157,23 @@ class UI {
 
     const tile = el('article', `tile${isSelf ? ' is-self' : ''}`);
     tile.dataset.member = memberId;
+    tile.addEventListener('click', () => {
+      this.manualSpotlightId = this.manualSpotlightId === memberId ? null : memberId;
+      this.updateGridLayout();
+    });
+    tile.style.cursor = 'pointer';
 
     const cam = el('video', 'tile-video');
     cam.autoplay = true;
     cam.playsInline = true;
+    cam.autoPictureInPicture = true;
+    cam.muted = true; // prevent echo, audio is handled via separate Audio element
 
     const screen = el('video', 'tile-video--screen');
     screen.autoplay = true;
     screen.playsInline = true;
+    screen.autoPictureInPicture = true;
+    screen.muted = true;
     screen.hidden = true;
 
     const avatarWrap = el('div', 'tile-avatar');
@@ -143,7 +195,7 @@ class UI {
     tile.append(cam, screen, avatarWrap, nameRow, badges);
     grid.appendChild(tile);
 
-    this.tiles.set(memberId, { cam, screen, avatarWrap, micBadge, camBadge, screenBadge });
+    this.tiles.set(memberId, { node: tile, cam, screen, avatarWrap, micBadge, camBadge, screenBadge });
     return tile;
   }
 
@@ -178,12 +230,19 @@ class UI {
     tile.camBadge.hidden = state.cam !== false;
     tile.screenBadge.hidden = state.screen !== true;
 
+    if (state.screen === true) {
+      tile.node.classList.add('is-sharing');
+    } else {
+      tile.node.classList.remove('is-sharing');
+    }
+    this.updateGridLayout();
+
     // The avatar stands in for the camera whenever there is no live
     // video to show (camera off, or no video track at all).
     const hasLiveVideo = (() => {
       const stream = tile.cam.srcObject;
       const track = stream ? stream.getVideoTracks()[0] : null;
-      return !!track && track.readyState === 'live';
+      return !!track;
     })();
     const showVideo = state.cam !== false && hasLiveVideo;
     tile.avatarWrap.hidden = showVideo;
