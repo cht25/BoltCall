@@ -4,20 +4,21 @@
    ═════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg: #070a13;
-  --bg-soft: #0b1020;
-  --panel: rgba(255, 255, 255, 0.045);
-  --panel-strong: rgba(255, 255, 255, 0.08);
-  --border: rgba(255, 255, 255, 0.09);
-  --accent: #0bdcc8;
-  --accent-2: #6d8bff;
-  --accent-dim: rgba(11, 220, 200, 0.14);
-  --danger: #ff5d73;
-  --warn: #ffb84d;
-  --text: #e9f0ff;
-  --text-muted: #8b96b0;
-  --radius: 16px;
-  --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  --bg: #f5f7fa;
+  --bg-soft: #ffffff;
+  --panel: #ffffff;
+  --panel-strong: #f0f2f5;
+  --border: #e2e8f0;
+  --accent: #2ecc71;
+  --accent-2: #27ae60;
+  --accent-dim: rgba(46, 204, 113, 0.14);
+  --danger: #e74c3c;
+  --warn: #f39c12;
+  --text: #1a202c;
+  --text-muted: #4a5568;
+  --base-blue: #1e3a8a;
+  --radius: 12px;
+  --shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -34,8 +35,8 @@ body {
   margin: 0;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   background:
-    radial-gradient(1100px 500px at 80% -10%, rgba(109, 139, 255, 0.16), transparent 60%),
-    radial-gradient(900px 500px at 0% 110%, rgba(11, 220, 200, 0.12), transparent 60%),
+    radial-gradient(1100px 500px at 80% -10%, rgba(46, 204, 113, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%, rgba(243, 156, 18, 0.08), transparent 60%),
     var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -321,8 +322,9 @@ input:focus-visible {
   gap: 16px;
   padding: 10px 18px;
   border-bottom: 1px solid var(--border);
-  background: rgba(7, 10, 19, 0.7);
+  background: var(--panel);
   backdrop-filter: blur(12px);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
   z-index: 20;
 }
 
@@ -420,7 +422,7 @@ input:focus-visible {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  background: #0a0f1d;
+  background: #111827;
 }
 
 .tile-video--screen {
@@ -791,8 +793,8 @@ input:focus-visible {
 .ctrl-btn.is-active .ctrl-icon {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border-color: transparent;
-  color: #04121a;
-  box-shadow: 0 8px 22px rgba(11, 220, 200, 0.3);
+  color: #ffffff;
+  box-shadow: 0 8px 22px rgba(46, 204, 113, 0.3);
 }
 
 .ctrl-btn.is-off .ctrl-icon {
@@ -951,4 +953,127 @@ input:focus-visible {
     height: 24px;
     font-size: 11px;
   }
+}
+
+/* ── Spotlight Layout ── */
+.video-grid.has-spotlight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  height: 100%;
+  pointer-events: none;
+}
+.video-grid.has-spotlight > .tile {
+  pointer-events: auto;
+}
+
+.tile.tile--spotlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  border-radius: 0;
+  margin: 0;
+  box-shadow: none;
+}
+
+.video-grid.has-spotlight .tile:not(.tile--spotlight) {
+  position: relative;
+  width: 160px;
+  height: 200px;
+  z-index: 10;
+  margin-top: 12px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
+}
+
+@media (max-width: 620px) {
+  .video-grid.has-spotlight .tile:not(.tile--spotlight) {
+    width: 120px;
+    height: 150px;
+  }
+}
+
+/* ── Screen Sharing PiP swap ── */
+.tile.is-sharing .tile-video {
+  /* When sharing, camera becomes the PiP */
+  inset: auto;
+  bottom: 12px;
+  right: 12px;
+  width: 32%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  z-index: 5;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.tile.is-sharing .tile-video--screen {
+  /* And screen becomes the main full tile */
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  z-index: 0;
+}
+
+/* ── Modern Buttons ── */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.btn-secondary:hover {
+  background: var(--border);
+  border-color: var(--text-muted);
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(255, 59, 48, 0.15);
+  color: #ff3b30;
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-danger:hover {
+  background: rgba(255, 59, 48, 0.25);
+  border-color: rgba(255, 59, 48, 0.5);
+  color: #ff453a;
+}
+
+/* ── Animated Background ── */
+@keyframes modernBgPan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+body {
+  background: linear-gradient(-45deg, #f5f7fa, #eef2f5, #e1e8ed, #f5f7fa);
+  background-size: 400% 400%;
+  animation: modernBgPan 20s ease infinite;
 }

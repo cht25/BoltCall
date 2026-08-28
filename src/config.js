@@ -76,14 +76,14 @@ function resolveRoomPassword() {
   const hash = process.env.ROOM_PASSWORD_HASH || '';
   const plain = process.env.ROOM_PASSWORD || '';
 
-  if (hash) return { kind: 'hash', value: hash, devHint: null };
+  if (hash) return { kind: 'hash', value: hash };
   if (plain) {
     if (plain.length < 6 && isProduction) {
       // eslint-disable-next-line no-console
       console.error('[config] FATAL: ROOM_PASSWORD must be at least 6 characters in production.');
       process.exit(1);
     }
-    return { kind: 'plain', value: plain, devHint: null };
+    return { kind: 'plain', value: plain };
   }
   if (isProduction) {
     // eslint-disable-next-line no-console
@@ -92,7 +92,7 @@ function resolveRoomPassword() {
   }
   // eslint-disable-next-line no-console
   console.warn(`[config] ⚠️  ROOM_PASSWORD not set — dev default "${DEV_DEFAULT_PASSWORD}" is in use.`);
-  return { kind: 'plain', value: DEV_DEFAULT_PASSWORD, devHint: DEV_DEFAULT_PASSWORD };
+  return { kind: 'plain', value: DEV_DEFAULT_PASSWORD };
 }
 
 const config = Object.freeze({
