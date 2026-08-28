@@ -75,6 +75,15 @@ function copyShareLink() {
 const TAB_ID = Math.random().toString(36).slice(2);
 const tabStartedAt = Date.now();
 let tabChannel = null;
+let tabGuardMuted = false; // our mic is off because of the tab guard (not the user)
+const rivalTabs = new Map(); // rival TAB_ID → its startedAt (newer tabs only)
+
+function newerRivalAlive() {
+  for (const [id, at] of rivalTabs) {
+    if (id !== TAB_ID && typeof at === 'number' && at > tabStartedAt) return true;
+  }
+  return false;
+}
 
 function setupTabGuard() {
   if (typeof BroadcastChannel === 'undefined') return;
@@ -82,16 +91,28 @@ function setupTabGuard() {
     tabChannel = new BroadcastChannel('boltcall-call-tabs');
     tabChannel.onmessage = (event) => {
       const msg = event.data || {};
-      if (msg.tab === TAB_ID || msg.type !== 'active') return;
-      // A different tab on this device joined AFTER us → silence ours.
-      if (typeof msg.at === 'number' && msg.at < tabStartedAt) return;
-      if (media.started && media.micOn) {
-        void handleMic(); // toggles off, updates UI + broadcasts state
-        ui.toast(
-          'This call is open in another tab on this device — microphone muted here to prevent echo.',
-          'warn',
-          7000
-        );
+      if (msg.tab === TAB_ID) return;
+      if (msg.type === 'active') {
+        // A different tab on this device joined AFTER us → silence ours.
+        if (typeof msg.at !== 'number' || msg.at < tabStartedAt) return;
+        rivalTabs.set(msg.tab, msg.at);
+        if (media.started && media.micOn && !tabGuardMuted) {
+          void handleMic({ auto: true }); // toggles off, updates UI + broadcasts
+          tabGuardMuted = true;
+          ui.toast(
+            'This call is open in another tab on this device — microphone muted here to prevent echo.',
+            'warn',
+            7000
+          );
+        }
+      } else if (msg.type === 'left') {
+        rivalTabs.delete(msg.tab);
+        // The newer tab that kept us muted is gone → hand the mic back.
+        if (tabGuardMuted && !newerRivalAlive() && media.started && !media.micOn) {
+          tabGuardMuted = false;
+          void handleMic();
+          ui.toast('The other tab closed — microphone restored here.', 'info', 4000);
+        }
       }
     };
   }
@@ -116,8 +137,9 @@ async function boot() {
 }
 
 async function showJoin() {
-  await api.roomInfo().catch(() => ({}));
+  const info = await api.roomInfo().catch(() => ({}));
   ui.setInviteMode(isInviteUrl());
+  ui.setDevHint(info && info.devPassword ? info.devPassword : null);
   ui.showJoin();
 }
 
@@ -373,7 +395,11 @@ function sendMediaState() {
   if (socket && socket.connected) socket.emit('media:state', media.state);
 }
 
-async function handleMic() {
+async function handleMic(opts = {}) {
+  // A user-initiated toggle always means "manual control from now on" —
+  // clear the auto-mute marker unless this call came from the tab guard.
+  const auto = !!(opts && opts.auto);
+  if (!auto) tabGuardMuted = false;
   const on = await media.toggleMic();
   ui.setControlState('mic', on);
   ui.updateMediaState(selfId, media.state);
@@ -435,11 +461,15 @@ async function leave({ skipLogout = false } = {}) {
 
   if (tabChannel) {
     try {
-      tabChannel.postMessage({ type: 'left', tab: TAB_ID });
+      tabChannel.postMessage({ type: 'left', tab: TAB_ID, at: tabStartedAt });
+      tabChannel.close();
     } catch {
       /* ignore */
     }
+    tabChannel = null;
   }
+  tabGuardMuted = false;
+  rivalTabs.clear();
 
   if (mesh) {
     mesh.destroy();

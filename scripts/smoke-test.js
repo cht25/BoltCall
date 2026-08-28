@@ -97,6 +97,7 @@ async function run() {
     assert.equal(r.status, 200);
     assert.equal(r.payload.memberName, 'thamjj13');
     assert.equal(r.payload.name, config.room.name);
+    assert.ok('devPassword' in r.payload, 'room info must expose the devPassword field');
     assert.equal(r.payload.devPassword, null, 'dev hint must not leak when a password is set');
     console.log('✅ room info (memberName = thamjj13)');
 

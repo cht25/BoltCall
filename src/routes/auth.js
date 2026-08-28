@@ -34,12 +34,14 @@ const logger = require('../utils/logger');
 function safeEqual(a, b) {
   const bufA = Buffer.from(String(a));
   const bufB = Buffer.from(String(b));
-  if (bufA.length !== bufB.length) {
-    // Still run a comparison so timing differs less by length.
-    crypto.timingSafeEqual(bufA, bufA);
-    return false;
-  }
-  return crypto.timingSafeEqual(bufA, bufB);
+  // Compare equal-length buffers so the runtime does not depend on the
+  // first differing byte position or on the lengths differing.
+  const size = Math.max(bufA.length, bufB.length);
+  const padA = Buffer.alloc(size);
+  const padB = Buffer.alloc(size);
+  bufA.copy(padA);
+  bufB.copy(padB);
+  return crypto.timingSafeEqual(padA, padB);
 }
 
 async function passwordMatches(candidate) {
@@ -81,7 +83,10 @@ function createAuthRouter() {
       res.json({
         ok: true,
         member: { id: memberId, name: config.room.memberName },
-        room: { name: config.room.name }
+        room: {
+          name: config.room.name,
+          maxParticipants: config.room.maxParticipants
+        }
       });
     })
   );
@@ -96,8 +101,7 @@ function createAuthRouter() {
         member: { id: req.user.id, name: config.room.memberName },
         room: {
           name: config.room.name,
-          maxParticipants: config.room.maxParticipants,
-          
+          maxParticipants: config.room.maxParticipants
         }
       });
     })

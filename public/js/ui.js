@@ -100,6 +100,14 @@ class UI {
     box.hidden = !message;
   }
 
+  /** Visible hint shown only in development with the default password. */
+  setDevHint(password) {
+    const box = document.getElementById('devPasswordHint');
+    if (!box) return;
+    box.hidden = !password;
+    if (password) box.textContent = `Development mode — default password: ${password}`;
+  }
+
   joinBusy(busy) {
     const button = document.getElementById('joinButton');
     button.disabled = busy;
@@ -113,7 +121,7 @@ class UI {
   setCount(count, max) {
     this.count = count;
     this.max = max;
-    const label = count === 1 ? '1 in the call' : `${count} in the call`;
+    const label = `${count} in the call`;
     document.getElementById('participantCount').textContent = max ? `${label} · max ${max}` : label;
     const miniCount = document.getElementById('miniCount');
     if (miniCount) miniCount.textContent = count === 1 ? '1 person' : `${count} people`;

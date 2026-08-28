@@ -95,6 +95,12 @@ function resolveRoomPassword() {
   return { kind: 'plain', value: DEV_DEFAULT_PASSWORD };
 }
 
+// Resolve once so the room block below can both store the credential and
+// expose whether the built-in DEV default is active (join-screen hint).
+const ROOM_PASSWORD = resolveRoomPassword();
+const DEV_PASSWORD_ACTIVE =
+  !isProduction && ROOM_PASSWORD.kind === 'plain' && ROOM_PASSWORD.value === DEV_DEFAULT_PASSWORD;
+
 const config = Object.freeze({
   env: NODE_ENV,
   isProduction,
@@ -120,7 +126,11 @@ const config = Object.freeze({
     name: process.env.ROOM_NAME || 'boltcall-room',
     // Every participant appears under this name — never asked from users.
     memberName: process.env.MEMBER_NAME || 'thamjj13',
-    password: resolveRoomPassword(),
+    password: ROOM_PASSWORD,
+    // Non-null only when the built-in dev password is in effect (dev
+    // mode, nothing configured) — the join screen may show it as a
+    // visible hint. Never set in production, never for custom passwords.
+    devPassword: DEV_PASSWORD_ACTIVE ? DEV_DEFAULT_PASSWORD : null,
     // Soft cap for the mesh (kept generous for house parties / classes).
     maxParticipants: num(process.env.MAX_PARTICIPANTS, 24)
   },
