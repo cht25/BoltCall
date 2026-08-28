@@ -118,8 +118,8 @@ function createApp({ io }) {
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      background_color: '#f5f7fa',
-      theme_color: '#2ecc71',
+      background_color: '#04060d',
+      theme_color: '#04070d',
       categories: ['communication'],
       icons: [
         { src: '/assets/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
@@ -144,7 +144,20 @@ function createApp({ io }) {
   );
 
   // ═══════════════════════════════════════════════════════════════════
-  //  7) 404 (API) and SPA fallback
+  //  7) Shareable call links — /call/:name?={timestamp}
+  //     Anyone opening one lands on the app; with a valid session they
+  //     drop straight into the call, otherwise they see the join gate.
+  // ═══════════════════════════════════════════════════════════════════
+  const sendIndex = (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'), (err) => {
+      if (err) next(err);
+    });
+  };
+  app.get(['/call', '/call/*'], sendIndex);
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  8) 404 (API) and SPA fallback
   // ═══════════════════════════════════════════════════════════════════
   app.use(notFoundHandler);
   app.get('*', (req, res, next) => {
@@ -152,10 +165,7 @@ function createApp({ io }) {
       next();
       return;
     }
-    res.setHeader('Cache-Control', 'no-cache');
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'), (err) => {
-      if (err) next(err);
-    });
+    sendIndex(req, res, next);
   });
 
   app.use(errorHandler);
