@@ -28,12 +28,28 @@ class LocalMedia {
     this.onScreenEnd = null;
   }
 
+  /**
+   * Full anti-echo audio capture constraints. System echo cancellation
+   * plus noise suppression and voice-oriented mono sampling keep the
+   * remote side from ever sending your own voice back at you.
+   */
+  static get audioConstraints() {
+    return {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 48000,
+      sampleSize: 16
+    };
+  }
+
   /** Try camera+mic; fall back to mic-only; never throws for missing devices. */
   async start() {
     this.started = true;
     try {
       this.camStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: LocalMedia.audioConstraints,
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24 } }
       });
     } catch (err) {
@@ -45,7 +61,7 @@ class LocalMedia {
       // still speak and hear the call.
       try {
         this.camStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          audio: LocalMedia.audioConstraints,
           video: false
         });
         this.camOn = false;

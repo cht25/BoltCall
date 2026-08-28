@@ -100,6 +100,14 @@ async function run() {
     assert.equal(r.payload.devPassword, null, 'dev hint must not leak when a password is set');
     console.log('✅ room info (memberName = thamjj13)');
 
+    // ── 1b) shareable call link serves the app ────────────────────────
+    const page = await fetch(`${base}/call/thamjj13?=1724947200000`);
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get('content-type') || '', /text\/html/);
+    const html = await page.text();
+    assert.ok(html.includes('id="appLoader"'), 'call link must serve the app shell');
+    console.log('✅ share link /call/thamjj13?={ts} serves the app');
+
     // ── 2) wrong password rejected ────────────────────────────────────
     r = await fetchJson('/api/auth/join', { method: 'POST', body: { password: 'wrong-password' } });
     assert.equal(r.status, 401);

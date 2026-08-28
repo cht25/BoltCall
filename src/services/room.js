@@ -26,7 +26,7 @@ const MEDIA_RESET = Object.freeze({ mic: false, cam: false, screen: false });
 const room = {
   name: config.room.name,
   memberName: config.room.memberName,
-    
+  maxParticipants: config.room.maxParticipants,
   participants: new Map(), // memberId → participant
   history: [], // [{ id, senderId, senderName, text, at }]
   historySeq: 0

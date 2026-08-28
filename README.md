@@ -15,15 +15,34 @@ lives in memory.
 
 - 🔑 **Password gate** — enter the room password and you're in. No
   signup, no name field, no "start call" button.
-- 🎙️ **Voice calling, both directions** — full-duplex audio over P2P.
-- 📹 **Video calling, both directions** — see everyone, everyone sees you.
-- 🖥️ **Screen sharing, both directions** — camera and screen are
-  independent tracks, so you can share your screen *and* keep your camera
-  on, and receive other people's screens the same way.
+- 🔗 **Shareable call link** — tap **Share** and a link like
+  `domain.com/call/thamjj13?={timestamp}` is copied; anyone opening it
+  lands on the join screen (with a valid session they drop straight in).
+- 🎙️ **Voice calling, both directions** — full-duplex audio over P2P with
+  echo cancellation, noise suppression and a duplicate-tab guard that
+  auto-mutes an older tab on the same device. Local tiles are always
+  muted, so you never hear yourself.
+- 🎬 **WhatsApp-style stage** — in a 1:1 call the other person fills the
+  screen and *you* float as a small, draggable picture-in-picture tile;
+  click any tile to pin it full size.
+- 📹 **Video calling, both directions** — see everyone, everyone sees
+  you. Remote cameras appear the moment the first track arrives.
+- 🖥️ **Screen sharing, both directions** — the shared screen takes over
+  the full main display while the sharer's camera floats as a small
+  inset on top; camera and screen are independent tracks in both
+  directions.
+- ⛶ **Fullscreen anything** — hover a tile and hit the expand button, or
+  double-click it, to view that camera or screen share in true
+  fullscreen.
+- 🗔 **Mini call &amp; pop-out** — minimize the call into a small draggable
+  floating window that stays on top while you use the rest of the app,
+  or use Picture-in-Picture to keep it visible even outside the browser.
 - 💬 **Text chat** — a room chat panel; late joiners receive the session
   history.
 - 🏷️ **Everyone is "thamjj13"** — the name is server-enforced; the local
   tile gets only a small *you* badge so you can find yourself in the grid.
+- ✨ Ultra-modern dark UI — animated aurora background (respects
+  `prefers-reduced-motion`) and a clean glass control dock.
 - 🔒 Hardened basics: bcrypt-able room password, JWT httpOnly session
   cookie, CSRF double-submit, rate limiting, helmet/CSP, authenticated
   sockets, no TURN secrets in the browser.
